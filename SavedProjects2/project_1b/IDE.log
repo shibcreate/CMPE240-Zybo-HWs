@@ -1,0 +1,62 @@
+22:57:02 INFO  : Launching XSCT server: xsct.bat -n  -interactive C:\Users\jorda\VivadoProjects\SavedProjects2\project_1b\temp_xsdb_launch_script.tcl
+22:57:02 INFO  : Registering command handlers for Vitis TCF services
+22:57:03 INFO  : Platform repository initialization has completed.
+22:57:09 INFO  : XSCT server has started successfully.
+22:57:14 INFO  : Successfully done setting XSCT server connection channel  
+22:57:14 INFO  : plnx-install-location is set to ''
+22:57:14 INFO  : Successfully done query RDI_DATADIR 
+22:57:14 INFO  : Successfully done setting workspace for the tool. 
+22:58:23 INFO  : Result from executing command 'getProjects': design_1_wrapper
+22:58:23 INFO  : Result from executing command 'getPlatforms': 
+22:58:23 WARN  : An unexpected exception occurred in the module 'platform project logging'
+22:58:23 INFO  : Platform 'design_1_wrapper' is added to custom repositories.
+22:58:30 INFO  : Platform 'design_1_wrapper' is added to custom repositories.
+23:00:24 INFO  : Result from executing command 'getProjects': design_1_wrapper
+23:00:24 INFO  : Result from executing command 'getPlatforms': design_1_wrapper|C:/Users/jorda/VivadoProjects/SavedProjects2/project_1b/design_1_wrapper/export/design_1_wrapper/design_1_wrapper.xpfm
+23:00:25 INFO  : Checking for BSP changes to sync application flags for project 'vitis1b'...
+23:00:44 INFO  : Connected to target on host '127.0.0.1' and port '3121'.
+23:00:45 INFO  : Jtag cable 'Digilent Zybo Z7 210351BFAA74A' is selected.
+23:00:45 INFO  : 'jtag frequency' command is executed.
+23:00:45 INFO  : Context for 'APU' is selected.
+23:00:45 INFO  : System reset is completed.
+23:00:48 INFO  : 'after 3000' command is executed.
+23:00:48 INFO  : 'targets -set -filter {jtag_cable_name =~ "Digilent Zybo Z7 210351BFAA74A" && level==0 && jtag_device_ctx=="jsn-Zybo Z7-210351BFAA74A-13722093-0"}' command is executed.
+23:00:49 INFO  : Device configured successfully with "C:/Users/jorda/VivadoProjects/SavedProjects2/project_1b/vitis1b/_ide/bitstream/design_1_wrapper.bit"
+23:00:49 INFO  : Context for 'APU' is selected.
+23:00:49 INFO  : Hardware design and registers information is loaded from 'C:/Users/jorda/VivadoProjects/SavedProjects2/project_1b/design_1_wrapper/export/design_1_wrapper/hw/design_1_wrapper.xsa'.
+23:00:49 INFO  : 'configparams force-mem-access 1' command is executed.
+23:00:49 INFO  : Context for 'APU' is selected.
+23:00:49 INFO  : Sourcing of 'C:/Users/jorda/VivadoProjects/SavedProjects2/project_1b/vitis1b/_ide/psinit/ps7_init.tcl' is done.
+23:00:49 INFO  : 'ps7_init' command is executed.
+23:00:49 INFO  : 'ps7_post_config' command is executed.
+23:00:50 INFO  : Context for processor 'ps7_cortexa9_0' is selected.
+23:00:50 INFO  : The application 'C:/Users/jorda/VivadoProjects/SavedProjects2/project_1b/vitis1b/Debug/vitis1b.elf' is downloaded to processor 'ps7_cortexa9_0'.
+23:00:50 INFO  : 'configparams force-mem-access 0' command is executed.
+23:00:50 INFO  : ----------------XSDB Script----------------
+connect -url tcp:127.0.0.1:3121
+targets -set -nocase -filter {name =~"APU*"}
+rst -system
+after 3000
+targets -set -filter {jtag_cable_name =~ "Digilent Zybo Z7 210351BFAA74A" && level==0 && jtag_device_ctx=="jsn-Zybo Z7-210351BFAA74A-13722093-0"}
+fpga -file C:/Users/jorda/VivadoProjects/SavedProjects2/project_1b/vitis1b/_ide/bitstream/design_1_wrapper.bit
+targets -set -nocase -filter {name =~"APU*"}
+loadhw -hw C:/Users/jorda/VivadoProjects/SavedProjects2/project_1b/design_1_wrapper/export/design_1_wrapper/hw/design_1_wrapper.xsa -mem-ranges [list {0x40000000 0xbfffffff}] -regs
+configparams force-mem-access 1
+targets -set -nocase -filter {name =~"APU*"}
+source C:/Users/jorda/VivadoProjects/SavedProjects2/project_1b/vitis1b/_ide/psinit/ps7_init.tcl
+ps7_init
+ps7_post_config
+targets -set -nocase -filter {name =~ "*A9*#0"}
+dow C:/Users/jorda/VivadoProjects/SavedProjects2/project_1b/vitis1b/Debug/vitis1b.elf
+configparams force-mem-access 0
+----------------End of Script----------------
+
+23:00:50 INFO  : Context for processor 'ps7_cortexa9_0' is selected.
+23:00:50 INFO  : 'con' command is executed.
+23:00:50 INFO  : ----------------XSDB Script (After Launch)----------------
+targets -set -nocase -filter {name =~ "*A9*#0"}
+con
+----------------End of Script----------------
+
+23:00:50 INFO  : Launch script is exported to file 'C:\Users\jorda\VivadoProjects\SavedProjects2\project_1b\vitis1b_system\_ide\scripts\systemdebugger_vitis1b_system_standalone.tcl'
+23:13:59 INFO  : Disconnected from the channel tcfchan#3.
