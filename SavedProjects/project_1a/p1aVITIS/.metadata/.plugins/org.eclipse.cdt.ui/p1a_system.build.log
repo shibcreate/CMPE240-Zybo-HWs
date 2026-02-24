@@ -1,0 +1,10 @@
+11:34:36 **** Build of configuration Debug for project p1a_system ****
+make all 
+Generating bif file for the system project
+generate_system_bif.bat 61926 C:/Users/jorda/VivadoProjects/SavedProjects/project_1a/p1aVITIS/design_1_wrapper/export/design_1_wrapper/design_1_wrapper.xpfm standalone_ps7_cortexa9_0 C:/Users/jorda/VivadoProjects/SavedProjects/project_1a/p1aVITIS/p1a_system/Debug/system.bif
+sdcard_gen --xpfm C:/Users/jorda/VivadoProjects/SavedProjects/project_1a/p1aVITIS/design_1_wrapper/export/design_1_wrapper/design_1_wrapper.xpfm --sys_config design_1_wrapper --bif C:/Users/jorda/VivadoProjects/SavedProjects/project_1a/p1aVITIS/p1a_system/Debug/system.bif --bitstream C:/Users/jorda/VivadoProjects/SavedProjects/project_1a/p1aVITIS/p1a/_ide/bitstream/design_1_wrapper.bit --elf C:/Users/jorda/VivadoProjects/SavedProjects/project_1a/p1aVITIS/p1a/Debug/p1a.elf,ps7_cortexa9_0
+creating BOOT.BIN using C:/Users/jorda/VivadoProjects/SavedProjects/project_1a/p1aVITIS/p1a/_ide/bitstream/design_1_wrapper.bit
+Running D:/Xilinx/Vitis/2021.1/bin/bootgen  -image C:/Users/jorda/VivadoProjects/SavedProjects/project_1a/p1aVITIS/p1a_system/Debug/sd_card_temp/boot.bif -w -o i BOOT.BIN
+
+11:34:42 Build Finished (took 6s.419ms)
+
