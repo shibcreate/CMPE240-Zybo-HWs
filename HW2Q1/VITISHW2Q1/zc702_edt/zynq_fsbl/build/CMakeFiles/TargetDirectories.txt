@@ -1,0 +1,3 @@
+C:/Users/jorda/VivadoProject2/HW2Q1/VITISHW2Q1/zc702_edt/zynq_fsbl/build/CMakeFiles/fsbl.elf.dir
+C:/Users/jorda/VivadoProject2/HW2Q1/VITISHW2Q1/zc702_edt/zynq_fsbl/build/CMakeFiles/edit_cache.dir
+C:/Users/jorda/VivadoProject2/HW2Q1/VITISHW2Q1/zc702_edt/zynq_fsbl/build/CMakeFiles/rebuild_cache.dir
