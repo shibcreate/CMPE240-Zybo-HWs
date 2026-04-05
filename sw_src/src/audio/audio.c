@@ -88,9 +88,9 @@ XStatus fnAudioWriteToReg(u8 u8RegAddr, u16 u8Data) {
 	u8BytesSent = XIic_Send(XPAR_IIC_0_BASEADDR, IIC_SLAVE_ADDR, u8TxData, 2, XIIC_STOP);
 
 	//check if all the bytes where sent
-	if (u8BytesSent != 3)
+	if (u8BytesSent != 2)
 	{
-		//return XST_FAILURE;
+		// return XST_FAILURE;
 	}
 
 	return XST_SUCCESS;
@@ -251,7 +251,6 @@ XStatus fnAudioStartupConfig ()
 
 	//slave: I2S
 	Status = fnAudioWriteToReg(R15_SOFTWARE_RESET, 0b000000000);
-	Status = XST_SUCCESS;
 	if (Status == XST_FAILURE)
 	{
 		if (Demo.u8Verbose)
@@ -439,7 +438,7 @@ void fnAudioPlay(XAxiDma AxiDma, u32 u32NrSamples)
 	}
 
 	// Enable Stream function to send data (MM2S)
-		Xil_Out32(I2S_STREAM_CONTROL_REG, 0x00000002);
+	Xil_Out32(I2S_STREAM_CONTROL_REG, 0x00000002);
 	if (Demo.u8Verbose)
 	{
 		xil_printf("\r\nPlayback function done");

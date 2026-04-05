@@ -222,12 +222,6 @@ int main(void)
 		}
 		while((tEnd-tStart)/(COUNTS_PER_SECOND/10) < 20);
 	}
-	//Initialize Audio I2S
-	Status = fnInitAudio();
-	if(Status != XST_SUCCESS) {
-		xil_printf("Audio initializing ERROR");
-		return XST_FAILURE;
-	}
 
 
 	// Enable all interrupts in our interrupt vector table
@@ -258,7 +252,7 @@ int main(void)
 			Xil_Out32(I2S_STREAM_CONTROL_REG, 0x00000000);
 			Xil_Out32(I2S_TRANSFER_CONTROL_REG, 0x00000000);
 
-			Xil_DCacheInvalidateRange((u32) MEM_BASE_ADDR, 5*NR_AUDIO_SAMPLES);
+			Xil_DCacheInvalidateRange((u32) MEM_BASE_ADDR, 4*NR_AUDIO_SAMPLES);
 			//microblaze_invalidate_dcache();
 			// Reset S2MM event and record flag
 			Demo.fDmaS2MMEvent = 0;
@@ -275,7 +269,7 @@ int main(void)
 			Xil_Out32(I2S_TRANSFER_CONTROL_REG, 0x00000000);
 			//Flush cache
 //					//microblaze_flush_dcache();
-			Xil_DCacheFlushRange((u32) MEM_BASE_ADDR, 5*NR_AUDIO_SAMPLES);
+			Xil_DCacheFlushRange((u32) MEM_BASE_ADDR, 4*NR_AUDIO_SAMPLES);
 			//Reset MM2S event and playback flag
 			Demo.fDmaMM2SEvent = 0;
 			Demo.fAudioPlayback = 0;
