@@ -34,6 +34,7 @@
 #include "xil_io.h"
 #include "xstatus.h"
 #include "xparameters.h"
+#include "xparameters_compat.h"
 #include "xil_cache.h"
 
 

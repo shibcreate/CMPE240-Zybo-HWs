@@ -55,6 +55,7 @@
 
 #include "xstatus.h"
 #include "xparameters.h"
+#include "xparameters_compat.h"
 #ifdef XPAR_INTC_0_DEVICE_ID
  #include "xintc.h"
 #else

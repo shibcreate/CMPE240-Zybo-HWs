@@ -74,8 +74,8 @@
 #define DDR_OFFSET				0x07F00000
 
 // Base Addresses
-// SW_ADDR removed - no switches in Zybo Z7-10 DMA design
-#define AUDIO_CTL_ADDR			XPAR_D_AXI_I2S_AUDIO_0_BASEADDR
+#define SW_ADDR					XPAR_SWITCHES_0_BASEADDR
+#define AUDIO_CTL_ADDR			XPAR_D_AXI_I2S_AUDIO_0_AXI_L_BASEADDR
 
 //SLave address of the ADAU audio controller
 #define IIC_SLAVE_ADDR			0x1A //for Zybo 0b0011010

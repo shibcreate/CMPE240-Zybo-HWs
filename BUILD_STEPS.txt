@@ -1,0 +1,336 @@
+================================================================================
+  CMPE240 Zybo Z7-10 DMA Audio Demo - Build Steps (phase1-audio-baseline)
+================================================================================
+
+PREREQUISITES
+  - Vivado 2025.2.1 (or compatible 2025.2.x)
+  - Vitis Unified IDE 2025.2
+  - Zybo Z7-10 board connected via USB
+  - Digilent board files installed in Vivado
+    (Settings > IP > Repository > Board Files should include Zybo Z7-10)
+
+================================================================================
+  WHY A FRESH CLONE DOESN'T "JUST BUILD"
+================================================================================
+
+The .gitignore excludes files that Vivado and Vitis generate during build:
+  - Vivado: .runs/, .gen/, .cache/, .hw/, .ip_user_files/ (synthesis/impl)
+  - Hardware: *.bit, *.xsa (bitstream and hardware export)
+  - Vitis: build/, export/, BSP libs, FSBL, *.elf (all build output)
+
+Additionally, the existing vitis_workspace/ contains HARDCODED ABSOLUTE PATHS
+from the original developer's machine in:
+  - vitis_workspace/system_wrapper/vitis-comp.json  (line 6: "xsa" field)
+  - vitis_workspace/Zybo-Z7-10-Audio/src/app.yaml   (line 1: "domain_path")
+
+This means you CANNOT open the existing Vitis workspace and click Build.
+You must create a fresh Vitis workspace (see Steps 8-13 below).
+
+You have two options for the hardware side:
+
+  OPTION A: Full rebuild (Vivado + Vitis) -- recommended if modifying HW
+  OPTION B: Use prebuilt .xsa, skip Vivado  -- faster, for SW-only changes
+
+================================================================================
+  OPTION A: FULL REBUILD (VIVADO -> VITIS)
+================================================================================
+
+STEP 1: CLONE THE REPO
+  git clone -b phase1-audio-baseline https://github.com/shibcreate/CMPE240-Zybo-HWs.git
+  cd CMPE240-Zybo-HWs
+
+STEP 2: OPEN THE VIVADO PROJECT
+  - Open Vivado 2025.2.1
+  - File > Open Project
+  - Navigate to: Zybo-Z7-10-DMA-hw/hw/hw.xpr
+  - Click OK
+  - Vivado may show warnings about missing run directories -- this is expected.
+    It will automatically recreate .cache/, .runs/, .gen/, etc.
+  - If Vivado asks to update the project path, click YES/OK.
+
+STEP 3: GENERATE THE BLOCK DESIGN OUTPUT PRODUCTS
+  - In the Sources panel, expand Design Sources
+  - Right-click on "system" (system.bd) block design
+  - Click "Generate Output Products"
+  - Select "Global" generation, click Generate
+  - Wait for it to complete (a few minutes)
+
+  NOTE: The HDL wrapper (system_wrapper.v) is already included in the repo
+  under hw.gen/. You do NOT need to create a new one. If you modify the
+  block design and need to update the wrapper, right-click "system" >
+  "Create HDL Wrapper" > "Let Vivado manage wrapper and auto-update".
+
+STEP 4: RUN SYNTHESIS
+  - Click "Run Synthesis" in the Flow Navigator (left panel)
+  - Or in the Tcl console: launch_runs synth_1 -jobs 16
+  - Wait for synthesis to complete (~5-10 min depending on your machine)
+
+  IF SYNTHESIS FAILS with:
+    ERROR: [Vivado 12-3280] Incremental checkpoint file
+    '...system_wrapper.dcp' does not exist.
+  Run these commands in the Vivado Tcl console to fix it:
+    reset_run synth_1
+    set_property AUTO_INCREMENTAL_CHECKPOINT 0 [get_runs synth_1]
+    launch_runs synth_1 -jobs 16
+
+STEP 5: RUN IMPLEMENTATION
+  - When synthesis completes, a dialog will appear
+  - Select "Run Implementation" and click OK
+  - Or in the Tcl console: launch_runs impl_1 -jobs 16
+  - Wait for implementation to complete (~5-10 min)
+
+STEP 6: GENERATE BITSTREAM
+  - When implementation completes, a dialog will appear
+  - Select "Generate Bitstream" and click OK
+  - Wait for bitstream generation to complete (~2-5 min)
+
+STEP 7: EXPORT HARDWARE (GENERATE THE .XSA FILE)
+  - File > Export > Export Hardware
+  - Select "Include bitstream" and click Next
+  - Choose an export location. RECOMMENDED: export to the repo root, e.g.:
+      <your-clone-path>/system_wrapper.xsa
+  - Click Finish
+  - NOTE THE FULL PATH of the exported .xsa file -- you will need it.
+
+================================================================================
+  OPTION B: USE PREBUILT .XSA (SKIP VIVADO)
+================================================================================
+
+If you are only making software changes, the repo includes prebuilt files:
+  prebuilt/system_wrapper.xsa   <-- hardware definition
+  prebuilt/system_wrapper.bit   <-- bitstream
+  prebuilt/Zybo-Z7-10-Audio.elf <-- prebuilt application
+
+To skip Vivado entirely, just note the full path to:
+  <your-clone-path>/prebuilt/system_wrapper.xsa
+
+You will use this path in the Vitis steps below.
+
+================================================================================
+  VITIS: SET UP A FRESH WORKSPACE
+================================================================================
+
+IMPORTANT: Do NOT open the existing vitis_workspace/ directory in Vitis.
+It contains hardcoded paths that will not match your machine.
+Always create a fresh workspace.
+
+STEP 8: OPEN VITIS AND CREATE A NEW WORKSPACE
+  - Open Vitis Unified IDE 2025.2
+  - When prompted, create a NEW workspace in any location, e.g.:
+      <your-clone-path>/my_vitis_workspace
+    (Do NOT point it at the existing vitis_workspace/ folder)
+
+STEP 9: CREATE THE PLATFORM COMPONENT
+  - File > New Component > Platform
+  - Component name: system_wrapper
+  - Click Next
+  - For "Hardware Design (XSA)": Browse to your .xsa file:
+      If you did Option A: the .xsa you exported in Step 7
+      If you did Option B: <clone-path>/prebuilt/system_wrapper.xsa
+  - Click Next
+  - Operating System: standalone
+  - Processor: ps7_cortexa9_0
+  - Click Next, then Finish
+
+STEP 10: BUILD THE PLATFORM
+  - In the Component Explorer, select "system_wrapper"
+  - Click the Build button (hammer icon) or right-click > Build
+  - Wait for the platform to build (generates BSP, FSBL, etc.)
+  - This must complete successfully before creating the application.
+
+STEP 11: CREATE THE APPLICATION COMPONENT
+  - File > New Component > Application
+  - Component name: Zybo-Z7-10-Audio
+  - Click Next
+  - Select platform: system_wrapper (the one you just created)
+  - Click Next
+  - Domain: standalone_ps7_cortexa9_0
+  - Click Next
+  - Template: Empty Application (C)
+  - Click Finish
+
+STEP 12: ADD THE SOURCE FILES
+  The source files are in sw_src/src/ in the repo. You need to copy them
+  INTO the application's src/ directory, preserving the folder structure.
+
+  IMPORTANT: Vitis "Import Sources" can sometimes flatten subdirectories.
+  The safest method is to copy via file explorer or command line:
+
+  Copy the following from <clone-path>/sw_src/src/ into your Vitis
+  application's src/ directory (e.g. my_vitis_workspace/Zybo-Z7-10-Audio/src/):
+
+    Top-level files:
+      demo.c, demo.h, platform.c, platform.h, lscript.ld
+      xparameters_compat.h    <-- SDT compatibility macros (required)
+      xtime_l.h               <-- timer header (required, missing from BSP)
+
+    Subdirectories (copy entire folders):
+      audio/audio.c, audio/audio.h
+      dma/dma.c, dma/dma.h
+      iic/iic.c, iic/iic.h
+      intc/intc.c, intc/intc.h
+      userio/userio.c, userio/userio.h
+
+  You can verify the structure is correct by checking that the src/ folder
+  looks like this:
+
+    src/
+      demo.c
+      demo.h
+      platform.c
+      platform.h
+      lscript.ld
+      xparameters_compat.h
+      xtime_l.h
+      audio/
+        audio.c
+        audio.h
+      dma/
+        dma.c
+        dma.h
+      iic/
+        iic.c
+        iic.h
+      intc/
+        intc.c
+        intc.h
+      userio/
+        userio.c
+        userio.h
+
+  After copying, right-click the project in Vitis and select Refresh so
+  it detects the new files.
+
+STEP 13: BUILD THE APPLICATION
+  - Select the Zybo-Z7-10-Audio component
+  - Click Build (hammer icon)
+  - The build should complete successfully, producing an .elf file
+  - You will see a warning about DDR_BASE_ADDR -- this is safe to ignore.
+
+================================================================================
+  PROGRAM THE BOARD
+================================================================================
+
+STEP 14: CONNECT THE ZYBO Z7-10
+  - Connect the board via USB to your PC
+  - Set the JP5 jumper to JTAG mode
+  - Power on the board
+
+STEP 15: PROGRAM THE FPGA + RUN THE APPLICATION
+  - In Vitis: right-click on Zybo-Z7-10-Audio
+  - Select "Run As" > "Launch Hardware"
+  - OR use the Run button in the toolbar
+  - This will:
+      1. Program the FPGA with the bitstream (system_wrapper.bit)
+      2. Load and run the application (Zybo-Z7-10-Audio.elf)
+
+  ALTERNATIVELY (using prebuilt files without Vitis build):
+  - Open Vivado > Open Hardware Manager > Auto Connect
+  - Program device with: prebuilt/system_wrapper.bit
+  - Then in Vitis or XSCT, download: prebuilt/Zybo-Z7-10-Audio.elf
+
+STEP 16: VERIFY
+  - Open a serial terminal (115200 baud, 8N1) on the board's COM port
+  - You should see the audio demo menu
+  - Connect audio via the line-in/headphone jacks on the Zybo Z7-10
+
+================================================================================
+  SDT COMPATIBILITY NOTES (Vitis 2025.2)
+================================================================================
+
+The original Digilent source code was written for the legacy HSI/SDK flow.
+Vitis 2025.2 uses the System Device Tree (SDT) flow, which generates
+different XPAR_ macro names in xparameters.h. Two files handle this:
+
+  xparameters_compat.h  - Maps old macro names to new SDT-generated names:
+    Old Name (HSI)                         -> New Name (SDT)
+    XPAR_D_AXI_I2S_AUDIO_0_AXI_L_BASEADDR -> XPAR_D_AXI_I2S_AUDIO_0_BASEADDR
+    XPAR_IIC_0_BASEADDR                    -> XPAR_XIIC_0_BASEADDR
+    XPAR_AXIDMA_0_DEVICE_ID               -> XPAR_XAXIDMA_0_BASEADDR
+    XPAR_AXI_IIC_0_DEVICE_ID              -> XPAR_XIIC_0_BASEADDR
+    XPAR_PS7_SCUGIC_0_DEVICE_ID           -> XPAR_XSCUGIC_0_BASEADDR
+    XPAR_FABRIC_AXI_*_INTR names          -> XPAR_FABRIC_X*_INTR names
+    XPAR_CPU_CORTEXA9_0_CPU_CLK_FREQ_HZ   -> XPAR_CPU_CORE_CLOCK_FREQ_HZ
+    (and others)
+
+  xtime_l.h  - Copied from the BSP source because the SDT BSP build does
+    not export this header to the include path, even though the code needs
+    it for XTime_GetTime() timing functions.
+
+These files are already included in sw_src/src/ and do not need to be
+created manually.
+
+================================================================================
+  QUICK REFERENCE / TROUBLESHOOTING
+================================================================================
+
+Q: Vivado says "board part not found" or "zybo-z7-10" is missing
+A: Install Digilent board files:
+   https://github.com/Digilent/vivado-boards
+   Copy board_files/ contents to:
+     <Vivado-install>/data/boards/board_files/
+
+Q: Vivado says IPs are locked or need upgrade
+A: In Vivado, go to Reports > Report IP Status. If IPs need upgrading,
+   click "Upgrade Selected" then re-run synthesis.
+
+Q: Synthesis fails with "Incremental checkpoint file does not exist"
+A: The .xpr references a .dcp file that doesn't exist after clone.
+   Run these in the Vivado Tcl console:
+     reset_run synth_1
+     set_property AUTO_INCREMENTAL_CHECKPOINT 0 [get_runs synth_1]
+     launch_runs synth_1 -jobs 16
+
+Q: Two system_wrapper files appear in Sources panel
+A: The repo includes the wrapper in hw.gen/. If a duplicate appears,
+   remove the extra one and keep the one under hw.gen/. Make sure it
+   is set as Top (right-click > Set as Top).
+
+Q: Build fails with "XPAR_..._BASEADDR undeclared" or similar
+A: Make sure xparameters_compat.h is in your src/ directory. This file
+   maps old HSI-style macro names to the new SDT names. It is included
+   in sw_src/src/ in the repo.
+
+Q: Build fails with "xtime_l.h: No such file or directory"
+A: Make sure xtime_l.h is in your src/ directory. The SDT BSP does not
+   export this header. It is included in sw_src/src/ in the repo.
+
+Q: Build fails with missing subdirectory headers (audio/audio.h, etc.)
+A: The source files must preserve their subdirectory structure. Make sure
+   audio/, dma/, iic/, intc/, userio/ folders exist inside src/ and are
+   not flattened. Copy via file explorer rather than Vitis Import Sources.
+
+Q: Platform build fails in Vitis with "XSA not found"
+A: Make sure you pointed to a valid .xsa file. If you used the prebuilt
+   one, verify the file exists at prebuilt/system_wrapper.xsa.
+
+Q: Application build fails with missing headers (xparameters.h, etc.)
+A: The platform was not built successfully. Build the platform first,
+   then build the application.
+
+Q: "Launch Hardware" fails / board not detected
+A: Check USB connection, make sure JP5 is set to JTAG, verify board
+   shows up in Vivado Hardware Manager (Open Target > Auto Connect).
+
+Q: Build worked before but fails after clone
+A: This is expected. The .gitignore removes all generated/build files.
+   You must rebuild from scratch following these steps. Always create a
+   fresh Vitis workspace (Steps 8-13).
+
+================================================================================
+  FILES IN THIS REPOSITORY
+================================================================================
+
+  Zybo-Z7-10-DMA-hw/         Vivado hardware project (.xpr, block design, IPs)
+    hw/hw.gen/                HDL wrapper + block design metadata (tracked)
+    hw/hw.runs/               Synthesis/impl outputs (gitignored, regenerated)
+  sw_src/                     Canonical source files (copy these into Vitis)
+    src/xparameters_compat.h  SDT compatibility macros (required for 2025.2)
+    src/xtime_l.h             Timer header (required, not exported by SDT BSP)
+  vitis_workspace/            Original Vitis workspace (has hardcoded paths -
+                              do NOT open directly, use as reference only)
+  prebuilt/                   Pre-generated .bit, .xsa, and .elf for quick test
+  BUILD_STEPS.txt             This file
+  *.pdf                       Digilent reference documentation
+
+================================================================================
