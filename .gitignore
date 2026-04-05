@@ -45,6 +45,11 @@ vivado-library-master/
 *.dcp
 *.xsa
 
+# Allow prebuilt binaries for direct programming
+!prebuilt/*.bit
+!prebuilt/*.xsa
+!prebuilt/*.elf
+
 # OS files
 Thumbs.db
 .DS_Store
