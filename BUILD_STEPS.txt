@@ -175,7 +175,7 @@ STEP 12: ADD THE SOURCE FILES
   This will copy the following into your application's src/:
 
     Top-level files:
-      demo.c, demo.h, platform.c, platform.h, lscript.ld
+      demo.c, demo.h, platform.c, platform.h, platform_config.h, lscript.ld
       xparameters_compat.h    <-- SDT compatibility macros (REQUIRED)
       xtime_l.h               <-- timer header (REQUIRED, missing from BSP)
 
@@ -188,6 +188,30 @@ STEP 12: ADD THE SOURCE FILES
 
   After copying, right-click the project in Vitis and select Refresh so
   it detects the new files.
+
+STEP 12b: REGISTER SUBDIRECTORY SOURCES IN UserConfig.cmake (REQUIRED)
+  The Vitis "Empty Application" CMakeLists only auto-collects .c files in
+  the top-level src/ directory (via aux_source_directory). The subdirectory
+  sources (audio/, dma/, iic/, intc/, userio/) will NOT be compiled unless
+  you explicitly register them. If you skip this step, the build will fail
+  at the link stage with "undefined reference to fnInitInterruptController",
+  "fnInitIic", "fnConfigDma", "fnInitAudio", etc.
+
+  Edit <workspace>/Audio_HW/src/UserConfig.cmake (or whatever you named the
+  app). Find the USER_COMPILE_SOURCES block (it is empty by default) and
+  replace it with:
+
+    set(USER_COMPILE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/audio/audio.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/dma/dma.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/iic/iic.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/intc/intc.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/userio/userio.c
+    )
+
+  Save the file. The headers in those subdirs are already found because the
+  CMakeLists adds the top-level src/ as an include dir, so #include
+  "audio/audio.h" resolves correctly.
 
 STEP 13: BUILD THE APPLICATION
   - Select the Zybo-Z7-10-Audio component
@@ -275,6 +299,27 @@ different XPAR_ macro names in xparameters.h. Two files handle this:
     XPAR_CPU_CORTEXA9_0_CPU_CLK_FREQ_HZ   -> XPAR_CPU_CORE_CLOCK_FREQ_HZ
     (and others)
 
+  CRITICAL: SDT FABRIC INTERRUPT IDs ARE SPI OFFSETS, NOT GIC IDs.
+    SDT generates XPAR_FABRIC_*_INTR as the SPI offset (e.g. 29 for the
+    GPIO IRQ), but XScuGic_Connect on Zynq-7000 expects the FULL GIC ID
+    (e.g. 61 for IRQ_F2P[0] = SPI 29 + XSCUGIC_SPI_INT_ID_START 32).
+    The compat header adds XSCUGIC_SPI_INT_ID_START to all the FABRIC
+    interrupt macros to convert. Without this, no fabric interrupts
+    fire and the demo appears completely dead (buttons do nothing,
+    DMA never reports completion).
+
+  CRITICAL: DMA s2mm/mm2s INTR vs INTR_1 ORDER DEPENDS ON THE BD.
+    SDT generates XPAR_FABRIC_AXI_DMA_0_INTR and XPAR_FABRIC_AXI_DMA_0_INTR_1
+    in the order the interrupts appear in the device tree, which depends on
+    the concat/IRQ wiring in the block design. In this BD:
+        axi_dma_0/mm2s_introut -> xlconcat_0/In2 -> XPAR_FABRIC_AXI_DMA_0_INTR
+        axi_dma_0/s2mm_introut -> xlconcat_0/In3 -> XPAR_FABRIC_AXI_DMA_0_INTR_1
+    The compat header maps:
+        S2MM_INTROUT_INTR -> AXI_DMA_0_INTR_1 (+ SPI offset)
+        MM2S_INTROUT_INTR -> AXI_DMA_0_INTR   (+ SPI offset)
+    If you change the BD wiring, update this mapping or the wrong DMA
+    handler will run for each transfer (record never finishes, etc.).
+
   xtime_l.h  - Copied from the BSP source because the SDT BSP build does
     not export this header to the include path, even though the code needs
     it for XTime_GetTime() timing functions.
@@ -321,6 +366,36 @@ Q: Build fails with missing subdirectory headers (audio/audio.h, etc.)
 A: The source files must preserve their subdirectory structure. Make sure
    audio/, dma/, iic/, intc/, userio/ folders exist inside src/ and are
    not flattened. Copy via file explorer rather than Vitis Import Sources.
+
+Q: Build fails at link with "undefined reference to fnInitIic" /
+   "fnConfigDma" / "fnInitAudio" / "fnInitInterruptController" / etc.
+A: The subdirectory .c files (audio/, dma/, iic/, intc/, userio/) are not
+   being compiled. The Vitis CMakeLists only auto-collects top-level src/.
+   See STEP 12b -- you must add the subdir sources to USER_COMPILE_SOURCES
+   in UserConfig.cmake.
+
+Q: Build fails with "platform_config.h: No such file or directory"
+A: Make sure platform_config.h is in your src/ directory. It is included
+   in sw_src/src/ in the repo and must be copied along with the other
+   top-level files in Step 12.
+
+Q: App boots, prints the menu, but pressing buttons does NOTHING
+A: The fabric (AXI GPIO) interrupt is not reaching the CPU. Almost always
+   this is the SDT-vs-GIC-ID issue: XPAR_FABRIC_*_INTR is an SPI offset
+   and XScuGic_Connect needs the full GIC ID. The compat header adds
+   XSCUGIC_SPI_INT_ID_START (=32) to fix this. Verify your copy of
+   xparameters_compat.h has the "+ XSCUGIC_SPI_INT_ID_START" lines and
+   that it is included by demo.c (it is, transitively, via the IVT).
+   Quick sanity check: temporarily set Demo.u8Verbose = 1 in demo.c so
+   button presses print "BTNU/BTNL/BTNR/BTND" -- if those don't appear,
+   the interrupt is not firing.
+
+Q: Recording starts but "Recording Done..." never prints (record stuck)
+A: The wrong DMA interrupt handler is registered. Verify the s2mm/mm2s
+   mapping in xparameters_compat.h matches the concat order in the BD.
+   In this BD, mm2s is at concat In2 and s2mm is at In3, so:
+       S2MM_INTROUT_INTR -> AXI_DMA_0_INTR_1
+       MM2S_INTROUT_INTR -> AXI_DMA_0_INTR
 
 Q: Platform build fails in Vitis with "XSA not found"
 A: Make sure you pointed to a valid .xsa file. If you used the prebuilt

@@ -52,10 +52,11 @@
 
 #include <stdio.h>
 #include "xparameters.h"
+#include "xparameters_compat.h"
 #include "userio.h"
 #include "../demo.h"
 
-#define USERIO_DEVICE_ID 	0
+#define USERIO_DEVICE_ID 	XPAR_XGPIO_0_BASEADDR
 
 extern volatile sDemo_t Demo;
 
