@@ -38,7 +38,7 @@
 /*					Procedure Declarations						*/
 /* ------------------------------------------------------------ */
 
-int TimerInitialize(u16 TimerDeviceId);
+int TimerInitialize(UINTPTR TimerDeviceId);
 void TimerDelay(u32 uSDelay);
 
 /* ------------------------------------------------------------ */

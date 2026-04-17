@@ -1,39 +1,14 @@
 /******************************************************************************
-*
-* Copyright (C) 2008 - 2014 Xilinx, Inc.  All rights reserved.
-*
-* Permission is hereby granted, free of charge, to any person obtaining a copy
-* of this software and associated documentation files (the "Software"), to deal
-* in the Software without restriction, including without limitation the rights
-* to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-* copies of the Software, and to permit persons to whom the Software is
-* furnished to do so, subject to the following conditions:
-*
-* The above copyright notice and this permission notice shall be included in
-* all copies or substantial portions of the Software.
-*
-* Use of the Software is limited solely to applications:
-* (a) running on a Xilinx device, or
-* (b) that interact with a Xilinx device through a bus or interconnect.
-*
-* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
-* XILINX  BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-* WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF
-* OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-* SOFTWARE.
-*
-* Except as contained in this notice, the name of the Xilinx shall not be used
-* in advertising or otherwise to promote the sale, use or other dealings in
-* this Software without prior written authorization from Xilinx.
-*
+* Copyright (C) 2008 - 2020 Xilinx, Inc.  All rights reserved.
+* Copyright 2022-2023 Advanced Micro Devices, Inc. All Rights Reserved.
+* SPDX-License-Identifier: MIT
 ******************************************************************************/
+
 /*****************************************************************************/
 /**
 *
 * @file xvtc_hw.h
-* @addtogroup vtc_v7_0
+* @addtogroup vtc Overview
 * @{
 *
 * This header file contains identifiers and register-level core functions (or
@@ -150,6 +125,7 @@
 *                       Added backward compatibility macros.
 * 7.1   vns   10/14/15  Added XVTC_CTL_INTERLACE_MASK macro and
 *                       modified XVTC_CTL_ALLSS_MASK
+* 8.0   jsr   07/03/18  Added new register XVTC_GASIZE_F1_OFFSET
 * </pre>
 *
 ******************************************************************************/
@@ -178,6 +154,9 @@ extern "C" {
 #define XVTC_IER_OFFSET		0x00C	/**< Interrupt Enable Register
 					  *  Offset */
 #define XVTC_VER_OFFSET		0x010	/**< Version Register Offset */
+#define XVTC_ADAPTIVE_CTL_OFFSET	0x014	/**< Adaptive-Sync Control
+						  *  Offset */
+#define XVTC_VFP_STRETCH_OFFSET		0x18	/**< VFP Stretch Limit Offset */
 
 #define XVTC_DASIZE_OFFSET	0x020	/**< Detector Active Size Offset */
 #define XVTC_DTSTAT_OFFSET	0x024	/**< Detector Timing Status Offset */
@@ -227,6 +206,8 @@ extern "C" {
 #define XVTC_GVSYNC_F1_OFFSET	0x08C	/**< Generator Field 1 Vertical
 					  *  Sync Offset */
 #define XVTC_GVSHOFF_F1_OFFSET	0x090	/**< Generator Field 1 Vsync horizontal
+					  *  Offset */
+#define XVTC_GASIZE_F1_OFFSET	0x094	/**< Generator Field 1 Active Size
 					  *  Offset */
 
 #define XVTC_FS00_OFFSET	0x100	/**< Frame Sync 00 Config
@@ -325,6 +306,10 @@ extern "C" {
 #define XVTC_CTL_GE_MASK	0x00000004 /**< VTC Generator Enable */
 #define XVTC_CTL_RU_MASK	0x00000002 /**< VTC Register Update */
 #define XVTC_CTL_SW_MASK	0x00000001 /**< VTC Core Enable */
+#define XVTC_ADAPTIVE_ENABLE_MASK	0x00000001 /**< VTC Adaptive-Sync
+						      * enable mask */
+#define XVTC_ADAPTIVE_MODE_MASK		0x00000002 /**< VTC Adaptive-Sync
+						      * mode mask */
 /*@}*/
 
 /** @name Interrupt Status/Enable Register Bit Definitions
@@ -390,6 +375,8 @@ extern "C" {
 				 XVTC_IXR_LOCKALL_MASK) /**< Mask for all
 							  *  interrupts Mask */
 
+#define XVTC_IXR_SPURIOUS_INTR_MASK	~(XVTC_IXR_ALLINTR_MASK)
+
 /** @name Error Register Bit Definitions
 * @{
 */
@@ -427,12 +414,12 @@ extern "C" {
 * Shift
 *  @{
 */
-#define XVTC_ASIZE_VERT_MASK	0x1FFF0000 /**< Total number of lines
+#define XVTC_ASIZE_VERT_MASK	0x3FFF0000 /**< Total number of lines
 					      *  (including blanking) for
 					      *  frame or field 1 */
 #define XVTC_ASIZE_VERT_SHIFT	16	    /**<  Bit shift for End Cycle or
 					      *   Line Count */
-#define XVTC_ASIZE_HORI_MASK	0x00001FFF /**< Horizontal Active Frame
+#define XVTC_ASIZE_HORI_MASK	0x00003FFF /**< Horizontal Active Frame
 					      *  Size.The width of the frame
 					      *  without blanking in number
 					      *  of pixels or clocks. */
@@ -492,12 +479,12 @@ extern "C" {
 * and Shift
 * @{
 */
-#define XVTC_VSIZE_F1_MASK	0x1FFF0000 /**< Total number of lines
+#define XVTC_VSIZE_F1_MASK	0x3FFF0000 /**< Total number of lines
 					      *  (including blanking) for
 					      *  frame or field 1 */
 #define XVTC_VSIZE_F1_SHIFT	16	/**< Bit shift for End Cycle or
 					  *  Line Count */
-#define XVTC_VSIZE_F0_MASK	0x00001FFF /**< Total number of lines
+#define XVTC_VSIZE_F0_MASK	0x00003FFF /**< Total number of lines
 					      *  (including blanking) for
 					      *  frame or field 0 */
 /*@}*/
@@ -505,12 +492,12 @@ extern "C" {
 /** @name Generator/Detector Sync/Blank Register Bit Definitions and Shift
 * @{
 */
-#define XVTC_SB_END_MASK	0x1FFF0000 /**< End cycle or line count
+#define XVTC_SB_END_MASK	0x3FFF0000 /**< End cycle or line count
 					      *  of horizontal sync, vertical
 					      *  sync or vertical blank */
 #define XVTC_SB_END_SHIFT	16	    /**< Bit shift for End Cycle or
 					      *  Line Count */
-#define XVTC_SB_START_MASK	0x00001FFF /**< Start cycle or line count
+#define XVTC_SB_START_MASK	0x00003FFF /**< Start cycle or line count
 					      *  of horizontal sync, vertical
 					      *  sync or vertical blank */
 /*@}*/
@@ -518,22 +505,22 @@ extern "C" {
 /** @name Generator/Detector VBlank/VSync Horizontal Bit Definitions and Shift
 * @{
 */
-#define XVTC_XVXHOX_HEND_MASK	0x1FFF0000	/**< Horizontal Offset End
+#define XVTC_XVXHOX_HEND_MASK	0x3FFF0000	/**< Horizontal Offset End
 						  *  Mask */
 #define XVTC_XVXHOX_HEND_SHIFT	16		/**< Horizontal End Shift */
-#define XVTC_XVXHOX_HSTART_MASK	0x00001FFF	/**< Horizontal Offset Start
+#define XVTC_XVXHOX_HSTART_MASK	0x00003FFF	/**< Horizontal Offset Start
 						  *  Offset */
 /*@}*/
 
 /** @name Frame Sync 00 - 15
 * @{
 */
-#define XVTC_FSXX_VSTART_MASK	0x1FFF0000 /**< Vertical line count during
+#define XVTC_FSXX_VSTART_MASK	0x3FFF0000 /**< Vertical line count during
 					      *  which current Frame Sync is
 					      *  active Mask */
 #define XVTC_FSXX_VSTART_SHIFT	16	    /**< Bit shift for the vertical
 					      *  line count */
-#define XVTC_FSXX_HSTART_MASK	0x00001FFF /**< Horizontal cycle count
+#define XVTC_FSXX_HSTART_MASK	0x00003FFF /**< Horizontal cycle count
 					      *  during which current
 					      *  Frame Sync is active Mask */
 /*@}*/
@@ -541,12 +528,12 @@ extern "C" {
 /** @name VTC Generator Global Delay Bit Definition and Shift
 * @{
 */
-#define XVTC_GGD_VDELAY_MASK	0x1FFF0000	/**< Total lines per frame to
+#define XVTC_GGD_VDELAY_MASK	0x3FFF0000	/**< Total lines per frame to
 						  *  delay generator output
 						  *  Mask */
 #define XVTC_GGD_VDELAY_SHIFT	16		/**< Bit shift for the total
 						  *  lines */
-#define XVTC_GGD_HDELAY_MASK	0x00001FFF	/**< Total clock cycles per
+#define XVTC_GGD_HDELAY_MASK	0x00003FFF	/**< Total clock cycles per
 						  *  line to delay generator
 						  *  output Mask */
 /*@}*/
@@ -652,6 +639,14 @@ extern "C" {
 
 /**************************** Type Definitions *******************************/
 
+/**
+ * This typedef enumerates the list of vertical front porch stretch mechanism
+ * supported by VTC core.
+ */
+typedef enum {
+	XVTC_FIXED_MODE = 0,
+	XVTC_AUTO_ADJUST_MODE
+} XVtc_AdaptiveSyncMode;
 
 /************************** Function Prototypes ******************************/
 

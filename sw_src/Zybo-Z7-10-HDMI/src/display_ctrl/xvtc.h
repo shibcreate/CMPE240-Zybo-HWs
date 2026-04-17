@@ -1,39 +1,14 @@
 /******************************************************************************
-*
-* Copyright (C) 2008 - 2014 Xilinx, Inc.  All rights reserved.
-*
-* Permission is hereby granted, free of charge, to any person obtaining a copy
-* of this software and associated documentation files (the "Software"), to deal
-* in the Software without restriction, including without limitation the rights
-* to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-* copies of the Software, and to permit persons to whom the Software is
-* furnished to do so, subject to the following conditions:
-*
-* The above copyright notice and this permission notice shall be included in
-* all copies or substantial portions of the Software.
-*
-* Use of the Software is limited solely to applications:
-* (a) running on a Xilinx device, or
-* (b) that interact with a Xilinx device through a bus or interconnect.
-*
-* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
-* XILINX  BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-* WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF
-* OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-* SOFTWARE.
-*
-* Except as contained in this notice, the name of the Xilinx shall not be used
-* in advertising or otherwise to promote the sale, use or other dealings in
-* this Software without prior written authorization from Xilinx.
-*
+* Copyright (C) 2008 - 2020 Xilinx, Inc.  All rights reserved.
+* Copyright 2022-2023 Advanced Micro Devices, Inc. All Rights Reserved.
+* SPDX-License-Identifier: MIT
 ******************************************************************************/
+
 /*****************************************************************************/
 /**
 *
 * @file xvtc.h
-* @addtogroup vtc_v7_0
+* @addtogroup vtc Overview
 * @{
 * @details
 *
@@ -294,6 +269,14 @@
 *                       XVtc_SelfTest.
 * 7.1   vns    10/14/15 Added InterlacedMode feild to XVtc_SourceSelect
 *                       structure
+* 7.2   sk     08/16/16 Used UINTPTR instead of u32 for Baseaddress as part of
+*                       adding 64 bit support. CR# 867425.
+*                       Changed the prototype of XVtc_CfgInitialize API.
+*       ms     03/17/17 Added readme.txt file in examples folder for doxygen
+*                       generation.
+* 8.2	rg     08/12/20	Implemented XVtc_SetAdaptiveSyncMode,
+* 				    XVtc_DisableAdaptiveSync and
+* 				    XVtc_SetVfpStretchLimit API's.
 * </pre>
 *
 ******************************************************************************/
@@ -364,10 +347,17 @@ extern "C" {
  * Each VTC device should have a configuration structure associated
  */
 typedef struct {
-	u16 DeviceId;		/**< DeviceId is the unique ID of the VTC
-				  *  core */
-	u32 BaseAddress;	/**< BaseAddress is the physical base address
+#ifndef SDT
+	u16 DeviceId;		/**< DeviceId is the unique ID of the VTC core */
+#else
+	char *Name;
+#endif
+	UINTPTR BaseAddress;	/**< BaseAddress is the physical base address
 				  *  of the core's registers */
+#ifdef SDT
+    u16 IntrId; 		    /**< Interrupt ID */
+    UINTPTR IntrParent; 	/**< Bit[0] Interrupt parent type Bit[64/32:1] Parent base address */
+#endif
 } XVtc_Config;
 
 /**
@@ -867,7 +857,7 @@ typedef struct {
 
 /* Initialization */
 int XVtc_CfgInitialize(XVtc *InstancePtr, XVtc_Config *CfgPtr,
-			u32 EffectiveAddr);
+			UINTPTR EffectiveAddr);
 
 /* Enabling and Disabling the VTC core */
 void XVtc_EnableGenerator(XVtc *InstancePtr);
@@ -938,7 +928,11 @@ void XVtc_GetDetectorHoriOffset(XVtc *InstancePtr,
 u32 XVtc_GetVersion(XVtc *InstancePtr);
 
 /* Initialization functions in xvtc_sinit.c */
+#ifndef SDT
 XVtc_Config *XVtc_LookupConfig(u16 DeviceId);
+#else
+XVtc_Config *XVtc_LookupConfig(UINTPTR BaseAddress);
+#endif
 
 /*
  * Interrupt related function(s) in xvtc_intr.c
@@ -949,6 +943,11 @@ int XVtc_SetCallBack(XVtc *InstancePtr, u32 IntrType,
 
 /* SelfTest related function in xvtc_selftest.c */
 int XVtc_SelfTest(XVtc *InstancePtr);
+
+/* Adaptive-Sync related functions */
+void XVtc_SetAdaptiveSyncMode(XVtc *InstancePtr, XVtc_AdaptiveSyncMode Mode);
+void XVtc_DisableAdaptiveSync(XVtc *InstancePtr);
+void XVtc_SetVfpStretchLimit(XVtc *InstancePtr, u32 StretchLimit);
 
 /************************** Variable Declarations ****************************/
 

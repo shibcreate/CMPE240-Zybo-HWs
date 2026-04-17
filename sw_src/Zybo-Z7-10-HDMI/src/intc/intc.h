@@ -55,6 +55,8 @@
 #define INTC_H_
 
 #include "xstatus.h"
+#include "xparameters.h"
+#include "xparameters_compat.h"
 
 /*
  * TODO: check if there is a better preprocessor check to determine
