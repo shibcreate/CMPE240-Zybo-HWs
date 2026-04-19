@@ -176,7 +176,7 @@ STEP 12: ADD THE SOURCE FILES
 
     Top-level files:
       demo.c, demo.h, platform.c, platform.h, platform_config.h, lscript.ld
-      xparameters_compat.h    <-- SDT compatibility macros (REQUIRED)
+      xpar_remap.h    <-- SDT compatibility macros (REQUIRED)
       xtime_l.h               <-- timer header (REQUIRED, missing from BSP)
 
     Subdirectories (must keep folder structure):
@@ -274,7 +274,7 @@ When you add a new IP to the block design or modify the software:
        source stays up to date. Also update vitis_workspace/Zybo-Z7-10-Audio/src/
        to keep it in sync.
      - If you add a new IP that introduces new XPAR_ macros with different
-       names between HSI and SDT, add the mapping to xparameters_compat.h.
+       names between HSI and SDT, add the mapping to xpar_remap.h.
      - Commit sw_src/ and vitis_workspace/ source changes.
 
   3. DO NOT commit your personal Vitis workspace (my_vitis_workspace/ etc.)
@@ -288,7 +288,7 @@ The original Digilent source code was written for the legacy HSI/SDK flow.
 Vitis 2025.2 uses the System Device Tree (SDT) flow, which generates
 different XPAR_ macro names in xparameters.h. Two files handle this:
 
-  xparameters_compat.h  - Maps old macro names to new SDT-generated names:
+  xpar_remap.h  - Maps old macro names to new SDT-generated names:
     Old Name (HSI)                         -> New Name (SDT)
     XPAR_D_AXI_I2S_AUDIO_0_AXI_L_BASEADDR -> XPAR_D_AXI_I2S_AUDIO_0_BASEADDR
     XPAR_IIC_0_BASEADDR                    -> XPAR_XIIC_0_BASEADDR
@@ -354,7 +354,7 @@ A: The repo includes the wrapper in hw.gen/hdl/. If a duplicate appears,
    is set as Top (right-click > Set as Top).
 
 Q: Build fails with "XPAR_..._BASEADDR undeclared" or similar
-A: Make sure xparameters_compat.h is in your src/ directory. This file
+A: Make sure xpar_remap.h is in your src/ directory. This file
    maps old HSI-style macro names to the new SDT names. It is included
    in sw_src/src/ in the repo.
 
@@ -384,7 +384,7 @@ A: The fabric (AXI GPIO) interrupt is not reaching the CPU. Almost always
    this is the SDT-vs-GIC-ID issue: XPAR_FABRIC_*_INTR is an SPI offset
    and XScuGic_Connect needs the full GIC ID. The compat header adds
    XSCUGIC_SPI_INT_ID_START (=32) to fix this. Verify your copy of
-   xparameters_compat.h has the "+ XSCUGIC_SPI_INT_ID_START" lines and
+   xpar_remap.h has the "+ XSCUGIC_SPI_INT_ID_START" lines and
    that it is included by demo.c (it is, transitively, via the IVT).
    Quick sanity check: temporarily set Demo.u8Verbose = 1 in demo.c so
    button presses print "BTNU/BTNL/BTNR/BTND" -- if those don't appear,
@@ -392,7 +392,7 @@ A: The fabric (AXI GPIO) interrupt is not reaching the CPU. Almost always
 
 Q: Recording starts but "Recording Done..." never prints (record stuck)
 A: The wrong DMA interrupt handler is registered. Verify the s2mm/mm2s
-   mapping in xparameters_compat.h matches the concat order in the BD.
+   mapping in xpar_remap.h matches the concat order in the BD.
    In this BD, mm2s is at concat In2 and s2mm is at In3, so:
        S2MM_INTROUT_INTR -> AXI_DMA_0_INTR_1
        MM2S_INTROUT_INTR -> AXI_DMA_0_INTR
@@ -423,7 +423,7 @@ A: This is expected. The .gitignore removes all generated/build files.
     hw/hw.gen/ip/, ipshared/  Generated IP outputs (gitignored, regenerated)
     hw/hw.runs/               Synthesis/impl outputs (gitignored, regenerated)
   sw_src/                     Canonical source files (copy these into Vitis)
-    src/xparameters_compat.h  SDT compatibility macros (required for 2025.2)
+    src/xpar_remap.h  SDT compatibility macros (required for 2025.2)
     src/xtime_l.h             Timer header (required, not exported by SDT BSP)
   vitis_workspace/            Original Vitis workspace (has hardcoded paths -
                               do NOT open directly, use as reference only)

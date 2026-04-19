@@ -52,7 +52,7 @@
 
 #include <stdio.h>
 #include "xparameters.h"
-#include "xparameters_compat.h"
+#include "xpar_remap.h"
 #include "userio.h"
 #include "../demo.h"
 

@@ -52,7 +52,7 @@
  *****************************************************************************/
 
 #include "xparameters.h"
-#include "xparameters_compat.h"
+#include "xpar_remap.h"
 #include "iic.h"
 #include <string.h>
 
