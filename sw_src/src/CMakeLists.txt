@@ -6,7 +6,9 @@ include(${CMAKE_SOURCE_DIR}/Empty_applicationExample.cmake)
 # Include any additional CMake files here
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/UserConfig.cmake)
-set(APP_NAME Zybo-Audio)
+# IMPORTANT: APP_NAME must match your Vitis component name exactly,
+# otherwise the ELF filename won't match what launch.json expects.
+set(APP_NAME zyboAudio)
 project(${APP_NAME})
 
 find_package(common)
