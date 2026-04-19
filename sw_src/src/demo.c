@@ -63,15 +63,23 @@
  */
 
 // Audio constants
-// Number of seconds to record/playback
-#define NR_SEC_TO_REC_PLAY		5
-
 // ADC/DAC sampling rate in Hz
-//#define AUDIO_SAMPLING_RATE		1000
 #define AUDIO_SAMPLING_RATE	  96000
 
-// Number of samples to record/playback
-#define NR_AUDIO_SAMPLES		(NR_SEC_TO_REC_PLAY*AUDIO_SAMPLING_RATE)
+// Passthrough chunk size (matches future FFT frame size)
+#define PASSTHROUGH_CHUNK      256
+#define BYTES_PER_SAMPLE       4
+#define CHUNK_BYTES            (PASSTHROUGH_CHUNK * BYTES_PER_SAMPLE)
+
+// Ping-pong buffer addresses in DDR
+#define BUF_A                  (MEM_BASE_ADDR)
+#define BUF_B                  (MEM_BASE_ADDR + 0x10000)
+
+// Gain: toggle between 0dB and boosted via codec registers
+#define DAC_VOL_0DB            0b101111001   // 0dB (default)
+#define DAC_VOL_BOOST          0b101111111   // +6dB (max DAC boost)
+#define ADC_VOL_NORMAL         0b000010111   // 0dB input
+#define ADC_VOL_BOOST          0b000011111   // +12dB input
 
 /* Timeout loop counter for reset
  */
@@ -140,48 +148,78 @@ const ivt_t ivt[] = {
 
 /*****************************************************************************/
 /**
+* Main function - Real-time audio passthrough (LINE IN -> HPH OUT)
 *
-* Main function
-*
-* This function is the main entry of the interrupt test. It does the following:
-*	Initialize the interrupt controller
-*	Initialize the IIC controller
-*	Initialize the User I/O driver
-*	Initialize the DMA engine
-*	Initialize the Audio I2S controller
-*	Enable the interrupts
-*	Wait for a button event then start selected task
-*	Wait for task to complete
-*
-* @param	None
-*
-* @return
-*		- XST_SUCCESS if example finishes successfully
-*		- XST_FAILURE if example fails.
-*
-* @note		None.
+* Uses ping-pong DMA buffers for continuous low-latency audio.
+* Each chunk is 256 samples (~2.67ms at 96kHz), giving continuous
+* passthrough with minimal latency.
 *
 ******************************************************************************/
+// Helper: start the first S2MM receive to kick off passthrough
+static void fnStartPassthrough(XAxiDma *pAxiDma, volatile int *pRxBufIdx)
+{
+	*pRxBufIdx = 0;
+	// Reset FIFOs for clean channel alignment
+	Xil_Out32(I2S_FIFO_CONTROL_REG, (1u << 30) | (1u << 31));
+	Xil_Out32(I2S_FIFO_CONTROL_REG, 0x00000000);
+
+	XAxiDma_SimpleTransfer(pAxiDma, (u32)BUF_A, CHUNK_BYTES, XAXIDMA_DEVICE_TO_DMA);
+	Xil_Out32(I2S_PERIOD_COUNT_REG, PASSTHROUGH_CHUNK);
+	Xil_Out32(I2S_TRANSFER_CONTROL_REG, 0x00000000);
+	Xil_Out32(I2S_TRANSFER_CONTROL_REG, 0x00000002); // RX_RS only
+	Xil_Out32(I2S_STREAM_CONTROL_REG, 0x00000001);   // S2MM enable
+}
+
+// Helper: stop I2S streaming
+static void fnStopPassthrough(void)
+{
+	Xil_Out32(I2S_STREAM_CONTROL_REG, 0x00000000);
+	Xil_Out32(I2S_TRANSFER_CONTROL_REG, 0x00000000);
+}
+
+// Helper: convert interleaved stereo to mono in-place
+// Buffer format: [L0][R0][L1][R1]... each 24-bit in 32-bit word
+// Output: mono = (L+R)>>1 written to both L and R slots
+static void fnStereoToMono(u32 bufAddr, u32 numBytes)
+{
+	u32 *pBuf = (u32 *)bufAddr;
+	u32 numWords = numBytes / sizeof(u32);
+
+	for (u32 i = 0; i < numWords; i += 2)
+	{
+		int32_t left  = (int32_t)pBuf[i];
+		int32_t right = (int32_t)pBuf[i + 1];
+
+		// Sign-extend from 24-bit
+		left  = (left  << 8) >> 8;
+		right = (right << 8) >> 8;
+
+		// Mix to mono: (L + R) / 2
+		int32_t mono = (left + right) >> 1;
+
+		u32 out = (u32)(mono & 0x00FFFFFF);
+		pBuf[i]     = out;
+		pBuf[i + 1] = out;
+	}
+}
+
 int main(void)
 {
 	int Status;
+	volatile int rxBufIdx = 0;
+	volatile int audioOn = 0;
+	volatile int gainBoost = 0;
 
 	Demo.u8Verbose = 0;
 
-	//Xil_DCacheDisable();
-
 	xil_printf("\r\n--- Entering main() --- \r\n");
 
-
-	//
 	//Initialize the interrupt controller
-
 	Status = fnInitInterruptController(&sIntc);
 	if(Status != XST_SUCCESS) {
 		xil_printf("Error initializing interrupts");
 		return XST_FAILURE;
 	}
-
 
 	// Initialize IIC controller
 	Status = fnInitIic(&sIic);
@@ -190,13 +228,12 @@ int main(void)
 		return XST_FAILURE;
 	}
 
-    // Initialize User I/O driver
-    Status = fnInitUserIO(&sUserIO);
-    if(Status != XST_SUCCESS) {
-    	xil_printf("User I/O ERROR");
-    	return XST_FAILURE;
-    }
-
+	// Initialize User I/O driver
+	Status = fnInitUserIO(&sUserIO);
+	if(Status != XST_SUCCESS) {
+		xil_printf("User I/O ERROR");
+		return XST_FAILURE;
+	}
 
 	//Initialize DMA
 	Status = fnConfigDma(&sAxiDma);
@@ -205,7 +242,6 @@ int main(void)
 		return XST_FAILURE;
 	}
 
-
 	//Initialize Audio I2S
 	Status = fnInitAudio();
 	if(Status != XST_SUCCESS) {
@@ -213,189 +249,149 @@ int main(void)
 		return XST_FAILURE;
 	}
 
+	// Wait for codec to stabilize
 	{
-		XTime  tStart, tEnd;
-
+		XTime tStart, tEnd;
 		XTime_GetTime(&tStart);
 		do {
 			XTime_GetTime(&tEnd);
-		}
-		while((tEnd-tStart)/(COUNTS_PER_SECOND/10) < 20);
+		} while((tEnd-tStart)/(COUNTS_PER_SECOND/10) < 20);
 	}
-	//Initialize Audio I2S
+
+	// Re-init audio after codec settle time
 	Status = fnInitAudio();
 	if(Status != XST_SUCCESS) {
 		xil_printf("Audio initializing ERROR");
 		return XST_FAILURE;
 	}
 
-
-	// Enable all interrupts in our interrupt vector table
-	// Make sure all driver instances using interrupts are initialized first
+	// Enable all interrupts
 	fnEnableInterrupts(&sIntc, &ivt[0], sizeof(ivt)/sizeof(ivt[0]));
 
-
+	// Configure codec: line input selected, DAC enabled
+	fnSetLineInput();
 
 	xil_printf("----------------------------------------------------------\r\n");
-	xil_printf("Zybo Z7-10 DMA Audio Demo\r\n");
+	xil_printf("Zybo Z7-10 Audio Passthrough\r\n");
 	xil_printf("----------------------------------------------------------\r\n");
-	xil_printf("  Controls:\r\n");
-	xil_printf("  BTN1: Record from MIC IN\r\n");
-	xil_printf("  BTN2: Play on HPH OUT\r\n");
-	xil_printf("  BTN3: Record from LINE IN\r\n");
+	xil_printf("  BTN3: Toggle audio ON/OFF\r\n");
+	xil_printf("  BTN2: Toggle gain boost (+18dB)\r\n");
 	xil_printf("----------------------------------------------------------\r\n");
+	xil_printf("Audio OFF | Gain: 0dB\r\n");
 
-    //main loop
+	while(1) {
 
-    while(1) {
-
-		// Checking the DMA S2MM event flag
-		if (Demo.fDmaS2MMEvent)
+		// --- Button events ---
+		if (Demo.fUserIOEvent)
 		{
-			xil_printf("\r\nRecording Done...");
-
-			// Disable Stream function to send data (S2MM)
-			Xil_Out32(I2S_STREAM_CONTROL_REG, 0x00000000);
-			Xil_Out32(I2S_TRANSFER_CONTROL_REG, 0x00000000);
-
-			Xil_DCacheInvalidateRange((u32) MEM_BASE_ADDR, 5*NR_AUDIO_SAMPLES);
-			//microblaze_invalidate_dcache();
-			// Reset S2MM event and record flag
-			Demo.fDmaS2MMEvent = 0;
-			Demo.fAudioRecord = 0;
-		}
-
-		// Checking the DMA MM2S event flag
-		if (Demo.fDmaMM2SEvent)
-		{
-			xil_printf("\r\nPlayback Done...");
-
-			// Disable Stream function to send data (S2MM)
-			Xil_Out32(I2S_STREAM_CONTROL_REG, 0x00000000);
-			Xil_Out32(I2S_TRANSFER_CONTROL_REG, 0x00000000);
-			//Flush cache
-//					//microblaze_flush_dcache();
-			Xil_DCacheFlushRange((u32) MEM_BASE_ADDR, 5*NR_AUDIO_SAMPLES);
-			//Reset MM2S event and playback flag
-			Demo.fDmaMM2SEvent = 0;
-			Demo.fAudioPlayback = 0;
-		}
-
-		// Checking the DMA Error event flag
-		if (Demo.fDmaError)
-		{
-			xil_printf("\r\nDma Error...");
-			xil_printf("\r\nDma Reset...");
-
-
-			Demo.fDmaError = 0;
-			Demo.fAudioPlayback = 0;
-			Demo.fAudioRecord = 0;
-		}
-
-		// Checking the btn change event
-		if(Demo.fUserIOEvent) {
-
-			switch(Demo.chBtn) {
-				case 'u':
-					if (!Demo.fAudioRecord && !Demo.fAudioPlayback)
+			switch(Demo.chBtn)
+			{
+				case 'r': // BTN3 (BTNR): toggle audio on/off
+					if (!audioOn)
 					{
-						xil_printf("\r\nStart Recording...\r\n");
-						fnSetMicInput();
-
-						fnAudioRecord(sAxiDma,NR_AUDIO_SAMPLES);
-						Demo.fAudioRecord = 1;
+						audioOn = 1;
+						fnStartPassthrough(&sAxiDma, &rxBufIdx);
+						xil_printf("Audio ON  | Gain: %s\r\n",
+								gainBoost ? "+18dB" : "0dB");
 					}
 					else
 					{
-						if (Demo.fAudioRecord)
-						{
-							xil_printf("\r\nStill Recording...\r\n");
-						}
-						else
-						{
-							xil_printf("\r\nStill Playing back...\r\n");
-						}
+						audioOn = 0;
+						fnStopPassthrough();
+						xil_printf("Audio OFF | Gain: %s\r\n",
+								gainBoost ? "+18dB" : "0dB");
 					}
 					break;
-				case 'd':
-					if (!Demo.fAudioRecord && !Demo.fAudioPlayback)
+
+				case 'l': // BTN2 (BTNL): toggle gain boost
+					gainBoost = !gainBoost;
+					if (gainBoost)
 					{
-						xil_printf("\r\nStart Playback...\r\n");
-						fnSetHpOutput();
-						fnAudioPlay(sAxiDma,NR_AUDIO_SAMPLES);
-						Demo.fAudioPlayback = 1;
+						// +6dB DAC + +12dB ADC = +18dB total
+						fnAudioWriteToReg(R2_LEFT_DAC_VOL, DAC_VOL_BOOST);
+						fnAudioWriteToReg(R3_RIGHT_DAC_VOL, DAC_VOL_BOOST);
+						fnAudioWriteToReg(R0_LEFT_ADC_VOL, ADC_VOL_BOOST);
+						fnAudioWriteToReg(R1_RIGHT_ADC_VOL, ADC_VOL_BOOST);
 					}
 					else
 					{
-						if (Demo.fAudioRecord)
-						{
-							xil_printf("\r\nStill Recording...\r\n");
-						}
-						else
-						{
-							xil_printf("\r\nStill Playing back...\r\n");
-						}
+						fnAudioWriteToReg(R2_LEFT_DAC_VOL, DAC_VOL_0DB);
+						fnAudioWriteToReg(R3_RIGHT_DAC_VOL, DAC_VOL_0DB);
+						fnAudioWriteToReg(R0_LEFT_ADC_VOL, ADC_VOL_NORMAL);
+						fnAudioWriteToReg(R1_RIGHT_ADC_VOL, ADC_VOL_NORMAL);
 					}
+					xil_printf("%s | Gain: %s\r\n",
+							audioOn ? "Audio ON " : "Audio OFF",
+							gainBoost ? "+18dB" : "0dB");
 					break;
-				case 'r':
-					if (!Demo.fAudioRecord && !Demo.fAudioPlayback)
-					{
-						xil_printf("\r\nStart Recording...\r\n");
-						fnSetLineInput();
-						fnAudioRecord(sAxiDma,NR_AUDIO_SAMPLES);
-						Demo.fAudioRecord = 1;
-					}
-					else
-					{
-						if (Demo.fAudioRecord)
-						{
-							xil_printf("\r\nStill Recording...\r\n");
-						}
-						else
-						{
-							xil_printf("\r\nStill Playing back...\r\n");
-						}
-					}
-					break;
-				case 'l':
-					if (!Demo.fAudioRecord && !Demo.fAudioPlayback)
-					{
-						xil_printf("\r\nStart Playback...");
-						fnSetLineOutput();
-						fnAudioPlay(sAxiDma,NR_AUDIO_SAMPLES);
-						Demo.fAudioPlayback = 1;
-					}
-					else
-					{
-						if (Demo.fAudioRecord)
-						{
-							xil_printf("\r\nStill Recording...\r\n");
-						}
-						else
-						{
-							xil_printf("\r\nStill Playing back...\r\n");
-						}
-					}
-					break;
+
 				default:
 					break;
 			}
 
-			// Reset the user I/O flag
 			Demo.chBtn = 0;
 			Demo.fUserIOEvent = 0;
-
-
 		}
 
-    }
+		// --- Passthrough DMA loop (only when audio is on) ---
+		if (audioOn && Demo.fDmaS2MMEvent)
+		{
+			Demo.fDmaS2MMEvent = 0;
 
-	xil_printf("\r\n--- Exiting main() --- \r\n");
+			// Determine which buffer just finished and which is next
+			u32 doneBuf = (rxBufIdx == 0) ? (u32)BUF_A : (u32)BUF_B;
+			rxBufIdx = 1 - rxBufIdx;
+			u32 nextBuf = (rxBufIdx == 0) ? (u32)BUF_A : (u32)BUF_B;
 
+			// Cache: invalidate received data
+			Xil_DCacheInvalidateRange(doneBuf, CHUNK_BYTES);
+
+			// Flush for playback
+			Xil_DCacheFlushRange(doneBuf, CHUNK_BYTES);
+
+			// Stop I2S before reconfiguring
+			Xil_Out32(I2S_STREAM_CONTROL_REG, 0x00000000);
+			Xil_Out32(I2S_TRANSFER_CONTROL_REG, 0x00000000);
+
+			// Reset I2S FIFOs to clear stale data and prevent L/R channel misalignment
+			Xil_Out32(I2S_FIFO_CONTROL_REG, (1u << 30) | (1u << 31));
+			Xil_Out32(I2S_FIFO_CONTROL_REG, 0x00000000);
+
+			// Start next S2MM receive into the other buffer
+			XAxiDma_SimpleTransfer(&sAxiDma, nextBuf, CHUNK_BYTES,
+					XAXIDMA_DEVICE_TO_DMA);
+
+			// Start MM2S playback from the completed buffer
+			XAxiDma_SimpleTransfer(&sAxiDma, doneBuf, CHUNK_BYTES,
+					XAXIDMA_DMA_TO_DEVICE);
+
+			// Enable both TX and RX simultaneously
+			Xil_Out32(I2S_PERIOD_COUNT_REG, PASSTHROUGH_CHUNK);
+			Xil_Out32(I2S_TRANSFER_CONTROL_REG, 0x00000003); // TX_RS | RX_RS
+			Xil_Out32(I2S_STREAM_CONTROL_REG, 0x00000003);   // S2MM | MM2S
+		}
+
+		// MM2S complete: playback of a chunk finished
+		if (Demo.fDmaMM2SEvent)
+		{
+			Demo.fDmaMM2SEvent = 0;
+		}
+
+		// DMA error: reset and restart if audio is on
+		if (Demo.fDmaError)
+		{
+			xil_printf("\r\nDMA Error, restarting...\r\n");
+			Demo.fDmaError = 0;
+			fnConfigDma(&sAxiDma);
+
+			if (audioOn)
+			{
+				fnStartPassthrough(&sAxiDma, &rxBufIdx);
+			}
+		}
+	}
 
 	return XST_SUCCESS;
-
 }
 
 
