@@ -39,6 +39,7 @@ vitis_workspace/Zybo-Z7-10-Audio/build/
 
 # Ignore any user-created Vitis workspaces (each user creates their own)
 my_vitis_workspace/
+audio_ws/
 
 # Extracted files (can be regenerated)
 sw_extracted/
