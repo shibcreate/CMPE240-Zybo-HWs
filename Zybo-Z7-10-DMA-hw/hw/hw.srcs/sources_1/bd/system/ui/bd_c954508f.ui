@@ -56,7 +56,7 @@ preplace netloc ps7_0_axi_periph_M01_AXI 1 2 3 700 200 NJ 200 NJ
 preplace netloc ps7_0_axi_periph_M02_AXI 1 2 3 730 330 NJ 330 1450J
 preplace netloc ps7_0_axi_periph_M03_AXI 1 2 1 N 410
 levelinfo -pg 1 0 190 540 910 1280 1720 2030
-pagesize -pg 1 -db -bbox -sgen -120 0 2170 1080
+pagesize -pg 1 -db -bbox -sgen -120 0 2180 1080
 "
 }
 0

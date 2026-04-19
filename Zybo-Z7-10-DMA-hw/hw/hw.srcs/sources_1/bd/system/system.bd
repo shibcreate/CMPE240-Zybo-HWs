@@ -3853,10 +3853,6 @@
           "axi_mem_intercon/S00_ACLK",
           "axi_mem_intercon/M00_ACLK",
           "axi_mem_intercon/S01_ACLK",
-          "d_axi_i2s_audio_0/CLK_100MHZ_I",
-          "d_axi_i2s_audio_0/S_AXIS_MM2S_ACLK",
-          "d_axi_i2s_audio_0/M_AXIS_S2MM_ACLK",
-          "d_axi_i2s_audio_0/AXI_L_aclk",
           "ps7_0_axi_periph/ACLK",
           "ps7_0_axi_periph/S00_ACLK",
           "ps7_0_axi_periph/M00_ACLK",
@@ -3867,7 +3863,11 @@
           "axi_iic_0/s_axi_aclk",
           "processing_system7_0/M_AXI_GP0_ACLK",
           "processing_system7_0/S_AXI_HP0_ACLK",
-          "rst_ps7_0_100M/slowest_sync_clk"
+          "rst_ps7_0_100M/slowest_sync_clk",
+          "d_axi_i2s_audio_0/CLK_100MHZ_I",
+          "d_axi_i2s_audio_0/S_AXIS_MM2S_ACLK",
+          "d_axi_i2s_audio_0/M_AXIS_S2MM_ACLK",
+          "d_axi_i2s_audio_0/AXI_L_aclk"
         ]
       },
       "processing_system7_0_FCLK_RESET0_N": {
@@ -3890,16 +3890,16 @@
           "axi_mem_intercon/S00_ARESETN",
           "axi_mem_intercon/M00_ARESETN",
           "axi_mem_intercon/S01_ARESETN",
-          "d_axi_i2s_audio_0/S_AXIS_MM2S_ARESETN",
-          "d_axi_i2s_audio_0/M_AXIS_S2MM_ARESETN",
-          "d_axi_i2s_audio_0/AXI_L_aresetn",
           "ps7_0_axi_periph/S00_ARESETN",
           "ps7_0_axi_periph/M00_ARESETN",
           "ps7_0_axi_periph/M01_ARESETN",
           "ps7_0_axi_periph/M02_ARESETN",
           "ps7_0_axi_periph/M03_ARESETN",
           "axi_gpio_0/s_axi_aresetn",
-          "axi_iic_0/s_axi_aresetn"
+          "axi_iic_0/s_axi_aresetn",
+          "d_axi_i2s_audio_0/S_AXIS_MM2S_ARESETN",
+          "d_axi_i2s_audio_0/M_AXIS_S2MM_ARESETN",
+          "d_axi_i2s_audio_0/AXI_L_aresetn"
         ]
       },
       "xlconcat_0_dout": {
