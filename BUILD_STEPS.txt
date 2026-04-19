@@ -375,7 +375,7 @@ and use XPAR_* macro names that no longer exist in Vitis 2025.2's System
 Device Tree (SDT) generated xparameters.h. The fix is a small shim
 header committed alongside the demo sources:
 
-    sw_src/Zybo-Z7-10-HDMI/src/xparameters_compat.h
+    sw_src/Zybo-Z7-10-HDMI/src/xpar_remap.h
 
 It is included AFTER <xparameters.h> in:
     - src/video_demo.c
@@ -474,7 +474,7 @@ A: You forgot Step 14. Vitis's default USER_COMPILE_SOURCES lists basenames
 Q: Application build fails with "XPAR_..._BASEADDR undeclared" or
    "XPAR_..._DEVICE_ID undeclared"
 A: See SDT compatibility notes above. You likely need to add a
-   src/xparameters_compat.h shim that maps the legacy macro names to the
+   src/xpar_remap.h shim that maps the legacy macro names to the
    SDT-generated equivalents in the platform's xparameters.h.
 
 Q: Application build fails with missing subdirectory headers

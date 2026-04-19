@@ -38,7 +38,7 @@
 #include "xil_cache.h"
 #include "timer_ps/timer_ps.h"
 #include "xparameters.h"
-#include "xparameters_compat.h"
+#include "xpar_remap.h"
 
 #include "xil_cache.h"
 

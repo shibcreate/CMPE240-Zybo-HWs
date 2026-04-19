@@ -56,7 +56,7 @@
 
 #include "xstatus.h"
 #include "xparameters.h"
-#include "xparameters_compat.h"
+#include "xpar_remap.h"
 
 /*
  * TODO: check if there is a better preprocessor check to determine

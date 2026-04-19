@@ -53,7 +53,7 @@
 
 #include "intc.h"
 #include "xparameters.h"
-#include "xparameters_compat.h"
+#include "xpar_remap.h"
 
 XStatus fnInitInterruptController(INTC *psIntc)
 {

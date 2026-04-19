@@ -26,7 +26,7 @@
 
 #include "xil_types.h"
 #include "xparameters.h"
-#include "xparameters_compat.h"
+#include "xpar_remap.h"
 
 /* ------------------------------------------------------------ */
 /*					Miscellaneous Declarations					*/

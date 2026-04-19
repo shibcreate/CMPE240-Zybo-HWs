@@ -138,8 +138,8 @@ typedef struct {
 		u32 stride; /* The line stride of the framebuffers, in bytes */
 		u32 curFrame; /* Current frame being displayed */
 		XGpio gpio; /* XGPIO driver struct */
-		UINTPTR vtcId; /* Base address of VTC core (SDT) or Device ID (legacy) */
-		u32 vtcIrptId; /* Interrupt ID for the VTC core */
+		UINTPTR vtcId; /* was u16 */
+		u32 vtcIrptId; /* was u16 */
 		u32 startOnDetect; /* boolean Flag indicating whether or not the VDMA should be started in the interrupt when a signal is detected */
 		VideoState state; /* Indicates if the Display is currently running */
 } VideoCapture;
