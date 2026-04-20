@@ -2,7 +2,7 @@
 //Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
 //--------------------------------------------------------------------------------
 //Tool Version: Vivado v.2025.2.1 (win64) Build 6403652 Thu Mar 19 19:48:24 GMT 2026
-//Date        : Sun Apr 19 01:19:30 2026
+//Date        : Sun Apr 19 17:25:20 2026
 //Host        : SHINIKAMAINPC running 64-bit major release  (build 9200)
 //Command     : generate_target system.bd
 //Design      : system
@@ -1338,7 +1338,7 @@ module s01_couplers_imp_VQ497S
         .s_axi_wvalid(S_AXI_wvalid));
 endmodule
 
-(* CORE_GENERATION_INFO = "system,IP_Integrator,{x_ipVendor=xilinx.com,x_ipLibrary=BlockDiagram,x_ipName=system,x_ipVersion=1.00.a,x_ipLanguage=VERILOG,numBlks=25,numReposBlks=15,numNonXlnxBlks=1,numHierBlks=10,maxHierDepth=0,numSysgenBlks=0,numHlsBlks=0,numHdlrefBlks=1,numPkgbdBlks=0,bdsource=USER,synth_mode=None}" *) (* HW_HANDOFF = "system.hwdef" *) 
+(* CORE_GENERATION_INFO = "system,IP_Integrator,{x_ipVendor=xilinx.com,x_ipLibrary=BlockDiagram,x_ipName=system,x_ipVersion=1.00.a,x_ipLanguage=VERILOG,numBlks=26,numReposBlks=16,numNonXlnxBlks=1,numHierBlks=10,maxHierDepth=0,numSysgenBlks=0,numHlsBlks=0,numHdlrefBlks=2,numPkgbdBlks=0,bdsource=USER,synth_mode=None}" *) (* HW_HANDOFF = "system.hwdef" *) 
 module system
    (DDR_addr,
     DDR_ba,
@@ -1637,6 +1637,11 @@ module system
   wire [0:0]ps7_0_axi_periph_M03_AXI_WVALID;
   wire [0:0]rst_ps7_0_100M_interconnect_aresetn;
   wire [0:0]rst_ps7_0_100M_peripheral_aresetn;
+  wire [31:0]sample_buffer_0_m_axis_TDATA;
+  wire [3:0]sample_buffer_0_m_axis_TKEEP;
+  wire sample_buffer_0_m_axis_TLAST;
+  wire sample_buffer_0_m_axis_TREADY;
+  wire sample_buffer_0_m_axis_TVALID;
   wire [31:0]stereo_to_mono_0_m_axis_TDATA;
   wire [3:0]stereo_to_mono_0_m_axis_TKEEP;
   wire stereo_to_mono_0_m_axis_TLAST;
@@ -1702,11 +1707,11 @@ module system
         .s_axi_lite_wdata(ps7_0_axi_periph_M03_AXI_WDATA),
         .s_axi_lite_wready(ps7_0_axi_periph_M03_AXI_WREADY),
         .s_axi_lite_wvalid(ps7_0_axi_periph_M03_AXI_WVALID),
-        .s_axis_s2mm_tdata(stereo_to_mono_0_m_axis_TDATA),
-        .s_axis_s2mm_tkeep(stereo_to_mono_0_m_axis_TKEEP),
-        .s_axis_s2mm_tlast(stereo_to_mono_0_m_axis_TLAST),
-        .s_axis_s2mm_tready(stereo_to_mono_0_m_axis_TREADY),
-        .s_axis_s2mm_tvalid(stereo_to_mono_0_m_axis_TVALID));
+        .s_axis_s2mm_tdata(sample_buffer_0_m_axis_TDATA),
+        .s_axis_s2mm_tkeep(sample_buffer_0_m_axis_TKEEP),
+        .s_axis_s2mm_tlast(sample_buffer_0_m_axis_TLAST),
+        .s_axis_s2mm_tready(sample_buffer_0_m_axis_TREADY),
+        .s_axis_s2mm_tvalid(sample_buffer_0_m_axis_TVALID));
   system_axi_gpio_0_0 axi_gpio_0
        (.gpio_io_i(btns_4bits_tri_i),
         .ip2intc_irpt(axi_gpio_0_ip2intc_irpt),
@@ -2108,6 +2113,19 @@ module system
         .mb_debug_sys_rst(1'b0),
         .peripheral_aresetn(rst_ps7_0_100M_peripheral_aresetn),
         .slowest_sync_clk(processing_system7_0_FCLK_CLK0));
+  system_sample_buffer_0_0 sample_buffer_0
+       (.aclk(processing_system7_0_FCLK_CLK0),
+        .aresetn(rst_ps7_0_100M_peripheral_aresetn),
+        .m_axis_tdata(sample_buffer_0_m_axis_TDATA),
+        .m_axis_tkeep(sample_buffer_0_m_axis_TKEEP),
+        .m_axis_tlast(sample_buffer_0_m_axis_TLAST),
+        .m_axis_tready(sample_buffer_0_m_axis_TREADY),
+        .m_axis_tvalid(sample_buffer_0_m_axis_TVALID),
+        .s_axis_tdata(stereo_to_mono_0_m_axis_TDATA),
+        .s_axis_tkeep(stereo_to_mono_0_m_axis_TKEEP),
+        .s_axis_tlast(stereo_to_mono_0_m_axis_TLAST),
+        .s_axis_tready(stereo_to_mono_0_m_axis_TREADY),
+        .s_axis_tvalid(stereo_to_mono_0_m_axis_TVALID));
   system_stereo_to_mono_0_0 stereo_to_mono_0
        (.aclk(processing_system7_0_FCLK_CLK0),
         .aresetn(rst_ps7_0_100M_peripheral_aresetn),
