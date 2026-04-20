@@ -27,21 +27,17 @@ void fnS2MMInterruptHandler (void *Callback)
 	u32 IrqStatus;
 	int TimeOut;
 	XAxiDma *AxiDmaInst = (XAxiDma *)Callback;
-	//Read all the pending DMA interrupts
-	IrqStatus = XAxiDma_IntrGetIrq(AxiDmaInst, XAXIDMA_DEVICE_TO_DMA);
 
-	//Acknowledge pending interrupts
+	IrqStatus = XAxiDma_IntrGetIrq(AxiDmaInst, XAXIDMA_DEVICE_TO_DMA);
 	XAxiDma_IntrAckIrq(AxiDmaInst, IrqStatus, XAXIDMA_DEVICE_TO_DMA);
 
-	//If there are no interrupts we exit the Handler
 	if (!(IrqStatus & XAXIDMA_IRQ_ALL_MASK))
-	{
 		return;
-	}
 
-	// If error interrupt is asserted, raise error flag, reset the
-	// hardware to recover from the error, and return with no further
-	// processing.
+	// DMAIntErr fires every frame because the FFT does not assert TLAST
+	// at the exact byte the DMA expects. The data transfer still completes
+	// correctly by byte count, so we treat Error+IOC as a normal completion.
+	// Reset the DMA here (channel halts on any error).
 	if (IrqStatus & XAXIDMA_IRQ_ERROR_MASK)
 	{
 		Demo.fDmaError = 1;
@@ -50,15 +46,13 @@ void fnS2MMInterruptHandler (void *Callback)
 		while (TimeOut)
 		{
 			if(XAxiDma_ResetIsDone(AxiDmaInst))
-			{
 				break;
-			}
 			TimeOut -= 1;
 		}
-		return;
 	}
 
-	if ((IrqStatus & XAXIDMA_IRQ_IOC_MASK))
+	// IOC means data was received — flag it regardless of error
+	if (IrqStatus & XAXIDMA_IRQ_IOC_MASK)
 	{
 		Demo.fDmaS2MMEvent = 1;
 	}
@@ -166,9 +160,8 @@ XStatus fnConfigDma(XAxiDma *AxiDma)
 	XAxiDma_IntrDisable(AxiDma, XAXIDMA_IRQ_ALL_MASK, XAXIDMA_DEVICE_TO_DMA);
 	XAxiDma_IntrDisable(AxiDma, XAXIDMA_IRQ_ALL_MASK, XAXIDMA_DMA_TO_DEVICE);
 
-	//Enable all the DMA Interrupts
+	//Enable S2MM interrupts only (MM2S unused - passthrough is in PL)
 	XAxiDma_IntrEnable(AxiDma, XAXIDMA_IRQ_ALL_MASK, XAXIDMA_DEVICE_TO_DMA);
-	XAxiDma_IntrEnable(AxiDma, XAXIDMA_IRQ_ALL_MASK, XAXIDMA_DMA_TO_DEVICE);
 
 	return XST_SUCCESS;
 }

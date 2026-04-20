@@ -5,7 +5,7 @@
 /*  Forwards every input sample to both outputs.                        */
 /*  Input only advances when BOTH outputs have accepted.                */
 /*                                                                      */
-/*  CMPE240 Spring 2026 - Shinka Balasundar                            */
+/*  CMPE240 Spring 2026                                                */
 /************************************************************************/
 
 `timescale 1ns / 1ps

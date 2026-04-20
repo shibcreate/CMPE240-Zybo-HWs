@@ -7,7 +7,7 @@
 /*  accumulates FRAME_SIZE unique samples, then bursts the full frame   */
 /*  out on master AXI4-Stream with TLAST on the last sample.            */
 /*                                                                      */
-/*  CMPE240 Spring 2026 - Amina Akhtar                                 */
+/*  CMPE240 Spring 2026                                                */
 /************************************************************************/
 
 `timescale 1ns / 1ps

@@ -7,7 +7,7 @@
 /*                                                                      */
 /*  24-bit audio in 32-bit AXI-Stream words (upper 8 bits zero)        */
 /*                                                                      */
-/*  CMPE240 Spring 2026 - Amina Akhtar                                 */
+/*  CMPE240 Spring 2026                                                */
 /************************************************************************/
 
 `timescale 1ns / 1ps

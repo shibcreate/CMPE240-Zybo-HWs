@@ -2,7 +2,7 @@
 //Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
 //--------------------------------------------------------------------------------
 //Tool Version: Vivado v.2025.2.1 (win64) Build 6403652 Thu Mar 19 19:48:24 GMT 2026
-//Date        : Sun Apr 19 17:25:20 2026
+//Date        : Sun Apr 19 17:58:37 2026
 //Host        : SHINIKAMAINPC running 64-bit major release  (build 9200)
 //Command     : generate_target system.bd
 //Design      : system
@@ -1338,7 +1338,7 @@ module s01_couplers_imp_VQ497S
         .s_axi_wvalid(S_AXI_wvalid));
 endmodule
 
-(* CORE_GENERATION_INFO = "system,IP_Integrator,{x_ipVendor=xilinx.com,x_ipLibrary=BlockDiagram,x_ipName=system,x_ipVersion=1.00.a,x_ipLanguage=VERILOG,numBlks=26,numReposBlks=16,numNonXlnxBlks=1,numHierBlks=10,maxHierDepth=0,numSysgenBlks=0,numHlsBlks=0,numHdlrefBlks=2,numPkgbdBlks=0,bdsource=USER,synth_mode=None}" *) (* HW_HANDOFF = "system.hwdef" *) 
+(* CORE_GENERATION_INFO = "system,IP_Integrator,{x_ipVendor=xilinx.com,x_ipLibrary=BlockDiagram,x_ipName=system,x_ipVersion=1.00.a,x_ipLanguage=VERILOG,numBlks=30,numReposBlks=20,numNonXlnxBlks=1,numHierBlks=10,maxHierDepth=0,numSysgenBlks=0,numHlsBlks=0,numHdlrefBlks=5,numPkgbdBlks=0,bdsource=USER,synth_mode=None}" *) (* HW_HANDOFF = "system.hwdef" *) 
 module system
    (DDR_addr,
     DDR_ba,
@@ -1444,11 +1444,6 @@ module system
   wire ac_pbdat;
   wire ac_recdat;
   wire ac_reclrc;
-  wire [31:0]axi_dma_0_M_AXIS_MM2S_TDATA;
-  wire [3:0]axi_dma_0_M_AXIS_MM2S_TKEEP;
-  wire axi_dma_0_M_AXIS_MM2S_TLAST;
-  wire axi_dma_0_M_AXIS_MM2S_TREADY;
-  wire axi_dma_0_M_AXIS_MM2S_TVALID;
   wire [31:0]axi_dma_0_M_AXI_MM2S_ARADDR;
   wire [1:0]axi_dma_0_M_AXI_MM2S_ARBURST;
   wire [3:0]axi_dma_0_M_AXI_MM2S_ARCACHE;
@@ -1520,12 +1515,25 @@ module system
   wire axi_mem_intercon_M00_AXI_WREADY;
   wire [7:0]axi_mem_intercon_M00_AXI_WSTRB;
   wire axi_mem_intercon_M00_AXI_WVALID;
+  wire [31:0]axis_broadcast_0_m0_axis_TDATA;
+  wire [3:0]axis_broadcast_0_m0_axis_TKEEP;
+  wire axis_broadcast_0_m0_axis_TLAST;
+  wire axis_broadcast_0_m0_axis_TREADY;
+  wire axis_broadcast_0_m0_axis_TVALID;
+  wire [31:0]axis_broadcast_0_m1_axis_TDATA;
+  wire [3:0]axis_broadcast_0_m1_axis_TKEEP;
+  wire axis_broadcast_0_m1_axis_TLAST;
+  wire axis_broadcast_0_m1_axis_TREADY;
+  wire axis_broadcast_0_m1_axis_TVALID;
   wire [3:0]btns_4bits_tri_i;
   wire [31:0]d_axi_i2s_audio_0_AXI_S2MM_TDATA;
   wire [3:0]d_axi_i2s_audio_0_AXI_S2MM_TKEEP;
   wire d_axi_i2s_audio_0_AXI_S2MM_TLAST;
   wire d_axi_i2s_audio_0_AXI_S2MM_TREADY;
   wire d_axi_i2s_audio_0_AXI_S2MM_TVALID;
+  wire [15:0]fft_config_0_m_axis_TDATA;
+  wire fft_config_0_m_axis_TREADY;
+  wire fft_config_0_m_axis_TVALID;
   wire processing_system7_0_FCLK_CLK0;
   wire processing_system7_0_FCLK_RESET0_N;
   wire [31:0]processing_system7_0_M_AXI_GP0_ARADDR;
@@ -1635,6 +1643,10 @@ module system
   wire [31:0]ps7_0_axi_periph_M03_AXI_WDATA;
   wire ps7_0_axi_periph_M03_AXI_WREADY;
   wire [0:0]ps7_0_axi_periph_M03_AXI_WVALID;
+  wire [31:0]real_to_complex_0_m_axis_TDATA;
+  wire real_to_complex_0_m_axis_TLAST;
+  wire real_to_complex_0_m_axis_TREADY;
+  wire real_to_complex_0_m_axis_TVALID;
   wire [0:0]rst_ps7_0_100M_interconnect_aresetn;
   wire [0:0]rst_ps7_0_100M_peripheral_aresetn;
   wire [31:0]sample_buffer_0_m_axis_TDATA;
@@ -1647,6 +1659,10 @@ module system
   wire stereo_to_mono_0_m_axis_TLAST;
   wire stereo_to_mono_0_m_axis_TREADY;
   wire stereo_to_mono_0_m_axis_TVALID;
+  wire [31:0]xfft_0_M_AXIS_DATA_TDATA;
+  wire xfft_0_M_AXIS_DATA_TLAST;
+  wire xfft_0_M_AXIS_DATA_TREADY;
+  wire xfft_0_M_AXIS_DATA_TVALID;
   wire [3:0]xlconcat_0_dout;
 
   assign ac_pblrc = ac_reclrc;
@@ -1683,11 +1699,7 @@ module system
         .m_axi_s2mm_wready(axi_dma_0_M_AXI_S2MM_WREADY),
         .m_axi_s2mm_wstrb(axi_dma_0_M_AXI_S2MM_WSTRB),
         .m_axi_s2mm_wvalid(axi_dma_0_M_AXI_S2MM_WVALID),
-        .m_axis_mm2s_tdata(axi_dma_0_M_AXIS_MM2S_TDATA),
-        .m_axis_mm2s_tkeep(axi_dma_0_M_AXIS_MM2S_TKEEP),
-        .m_axis_mm2s_tlast(axi_dma_0_M_AXIS_MM2S_TLAST),
-        .m_axis_mm2s_tready(axi_dma_0_M_AXIS_MM2S_TREADY),
-        .m_axis_mm2s_tvalid(axi_dma_0_M_AXIS_MM2S_TVALID),
+        .m_axis_mm2s_tready(1'b1),
         .mm2s_introut(axi_dma_0_mm2s_introut),
         .s2mm_introut(axi_dma_0_s2mm_introut),
         .s_axi_lite_aclk(processing_system7_0_FCLK_CLK0),
@@ -1707,11 +1719,11 @@ module system
         .s_axi_lite_wdata(ps7_0_axi_periph_M03_AXI_WDATA),
         .s_axi_lite_wready(ps7_0_axi_periph_M03_AXI_WREADY),
         .s_axi_lite_wvalid(ps7_0_axi_periph_M03_AXI_WVALID),
-        .s_axis_s2mm_tdata(sample_buffer_0_m_axis_TDATA),
-        .s_axis_s2mm_tkeep(sample_buffer_0_m_axis_TKEEP),
-        .s_axis_s2mm_tlast(sample_buffer_0_m_axis_TLAST),
-        .s_axis_s2mm_tready(sample_buffer_0_m_axis_TREADY),
-        .s_axis_s2mm_tvalid(sample_buffer_0_m_axis_TVALID));
+        .s_axis_s2mm_tdata(xfft_0_M_AXIS_DATA_TDATA),
+        .s_axis_s2mm_tkeep({1'b1,1'b1,1'b1,1'b1}),
+        .s_axis_s2mm_tlast(xfft_0_M_AXIS_DATA_TLAST),
+        .s_axis_s2mm_tready(xfft_0_M_AXIS_DATA_TREADY),
+        .s_axis_s2mm_tvalid(xfft_0_M_AXIS_DATA_TVALID));
   system_axi_gpio_0_0 axi_gpio_0
        (.gpio_io_i(btns_4bits_tri_i),
         .ip2intc_irpt(axi_gpio_0_ip2intc_irpt),
@@ -1837,6 +1849,24 @@ module system
         .S01_AXI_wready(axi_dma_0_M_AXI_S2MM_WREADY),
         .S01_AXI_wstrb(axi_dma_0_M_AXI_S2MM_WSTRB),
         .S01_AXI_wvalid(axi_dma_0_M_AXI_S2MM_WVALID));
+  system_axis_broadcast_0_0 axis_broadcast_0
+       (.aclk(processing_system7_0_FCLK_CLK0),
+        .aresetn(rst_ps7_0_100M_peripheral_aresetn),
+        .m0_axis_tdata(axis_broadcast_0_m0_axis_TDATA),
+        .m0_axis_tkeep(axis_broadcast_0_m0_axis_TKEEP),
+        .m0_axis_tlast(axis_broadcast_0_m0_axis_TLAST),
+        .m0_axis_tready(axis_broadcast_0_m0_axis_TREADY),
+        .m0_axis_tvalid(axis_broadcast_0_m0_axis_TVALID),
+        .m1_axis_tdata(axis_broadcast_0_m1_axis_TDATA),
+        .m1_axis_tkeep(axis_broadcast_0_m1_axis_TKEEP),
+        .m1_axis_tlast(axis_broadcast_0_m1_axis_TLAST),
+        .m1_axis_tready(axis_broadcast_0_m1_axis_TREADY),
+        .m1_axis_tvalid(axis_broadcast_0_m1_axis_TVALID),
+        .s_axis_tdata(stereo_to_mono_0_m_axis_TDATA),
+        .s_axis_tkeep(stereo_to_mono_0_m_axis_TKEEP),
+        .s_axis_tlast(stereo_to_mono_0_m_axis_TLAST),
+        .s_axis_tready(stereo_to_mono_0_m_axis_TREADY),
+        .s_axis_tvalid(stereo_to_mono_0_m_axis_TVALID));
   system_d_axi_i2s_audio_0_0 d_axi_i2s_audio_0
        (.AXI_L_aclk(processing_system7_0_FCLK_CLK0),
         .AXI_L_araddr(ps7_0_axi_periph_M02_AXI_ARADDR[5:0]),
@@ -1874,11 +1904,17 @@ module system
         .SDATA_O(ac_pbdat),
         .S_AXIS_MM2S_ACLK(processing_system7_0_FCLK_CLK0),
         .S_AXIS_MM2S_ARESETN(rst_ps7_0_100M_peripheral_aresetn),
-        .S_AXIS_MM2S_TDATA(axi_dma_0_M_AXIS_MM2S_TDATA),
-        .S_AXIS_MM2S_TKEEP(axi_dma_0_M_AXIS_MM2S_TKEEP),
-        .S_AXIS_MM2S_TLAST(axi_dma_0_M_AXIS_MM2S_TLAST),
-        .S_AXIS_MM2S_TREADY(axi_dma_0_M_AXIS_MM2S_TREADY),
-        .S_AXIS_MM2S_TVALID(axi_dma_0_M_AXIS_MM2S_TVALID));
+        .S_AXIS_MM2S_TDATA(axis_broadcast_0_m1_axis_TDATA),
+        .S_AXIS_MM2S_TKEEP(axis_broadcast_0_m1_axis_TKEEP),
+        .S_AXIS_MM2S_TLAST(axis_broadcast_0_m1_axis_TLAST),
+        .S_AXIS_MM2S_TREADY(axis_broadcast_0_m1_axis_TREADY),
+        .S_AXIS_MM2S_TVALID(axis_broadcast_0_m1_axis_TVALID));
+  system_fft_config_0_0 fft_config_0
+       (.aclk(processing_system7_0_FCLK_CLK0),
+        .aresetn(rst_ps7_0_100M_peripheral_aresetn),
+        .m_axis_tdata(fft_config_0_m_axis_TDATA),
+        .m_axis_tready(fft_config_0_m_axis_TREADY),
+        .m_axis_tvalid(fft_config_0_m_axis_TVALID));
   system_processing_system7_0_0 processing_system7_0
        (.DDR_Addr(DDR_addr),
         .DDR_BankAddr(DDR_ba),
@@ -2105,6 +2141,18 @@ module system
         .S00_AXI_wready(processing_system7_0_M_AXI_GP0_WREADY),
         .S00_AXI_wstrb(processing_system7_0_M_AXI_GP0_WSTRB),
         .S00_AXI_wvalid(processing_system7_0_M_AXI_GP0_WVALID));
+  system_real_to_complex_0_0 real_to_complex_0
+       (.aclk(processing_system7_0_FCLK_CLK0),
+        .aresetn(rst_ps7_0_100M_peripheral_aresetn),
+        .m_axis_tdata(real_to_complex_0_m_axis_TDATA),
+        .m_axis_tlast(real_to_complex_0_m_axis_TLAST),
+        .m_axis_tready(real_to_complex_0_m_axis_TREADY),
+        .m_axis_tvalid(real_to_complex_0_m_axis_TVALID),
+        .s_axis_tdata(sample_buffer_0_m_axis_TDATA),
+        .s_axis_tkeep(sample_buffer_0_m_axis_TKEEP),
+        .s_axis_tlast(sample_buffer_0_m_axis_TLAST),
+        .s_axis_tready(sample_buffer_0_m_axis_TREADY),
+        .s_axis_tvalid(sample_buffer_0_m_axis_TVALID));
   system_rst_ps7_0_100M_0 rst_ps7_0_100M
        (.aux_reset_in(1'b1),
         .dcm_locked(1'b1),
@@ -2121,11 +2169,11 @@ module system
         .m_axis_tlast(sample_buffer_0_m_axis_TLAST),
         .m_axis_tready(sample_buffer_0_m_axis_TREADY),
         .m_axis_tvalid(sample_buffer_0_m_axis_TVALID),
-        .s_axis_tdata(stereo_to_mono_0_m_axis_TDATA),
-        .s_axis_tkeep(stereo_to_mono_0_m_axis_TKEEP),
-        .s_axis_tlast(stereo_to_mono_0_m_axis_TLAST),
-        .s_axis_tready(stereo_to_mono_0_m_axis_TREADY),
-        .s_axis_tvalid(stereo_to_mono_0_m_axis_TVALID));
+        .s_axis_tdata(axis_broadcast_0_m0_axis_TDATA),
+        .s_axis_tkeep(axis_broadcast_0_m0_axis_TKEEP),
+        .s_axis_tlast(axis_broadcast_0_m0_axis_TLAST),
+        .s_axis_tready(axis_broadcast_0_m0_axis_TREADY),
+        .s_axis_tvalid(axis_broadcast_0_m0_axis_TVALID));
   system_stereo_to_mono_0_0 stereo_to_mono_0
        (.aclk(processing_system7_0_FCLK_CLK0),
         .aresetn(rst_ps7_0_100M_peripheral_aresetn),
@@ -2139,6 +2187,19 @@ module system
         .s_axis_tlast(d_axi_i2s_audio_0_AXI_S2MM_TLAST),
         .s_axis_tready(d_axi_i2s_audio_0_AXI_S2MM_TREADY),
         .s_axis_tvalid(d_axi_i2s_audio_0_AXI_S2MM_TVALID));
+  system_xfft_0_0 xfft_0
+       (.aclk(processing_system7_0_FCLK_CLK0),
+        .m_axis_data_tdata(xfft_0_M_AXIS_DATA_TDATA),
+        .m_axis_data_tlast(xfft_0_M_AXIS_DATA_TLAST),
+        .m_axis_data_tready(xfft_0_M_AXIS_DATA_TREADY),
+        .m_axis_data_tvalid(xfft_0_M_AXIS_DATA_TVALID),
+        .s_axis_config_tdata(fft_config_0_m_axis_TDATA),
+        .s_axis_config_tready(fft_config_0_m_axis_TREADY),
+        .s_axis_config_tvalid(fft_config_0_m_axis_TVALID),
+        .s_axis_data_tdata(real_to_complex_0_m_axis_TDATA),
+        .s_axis_data_tlast(real_to_complex_0_m_axis_TLAST),
+        .s_axis_data_tready(real_to_complex_0_m_axis_TREADY),
+        .s_axis_data_tvalid(real_to_complex_0_m_axis_TVALID));
   system_xlconcat_0_0 xlconcat_0
        (.In0(axi_gpio_0_ip2intc_irpt),
         .In1(axi_iic_0_iic2intc_irpt),

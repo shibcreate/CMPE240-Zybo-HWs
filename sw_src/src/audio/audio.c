@@ -475,7 +475,7 @@ void fnSetMicInput()
 void fnSetLineInput()
 {
 	//MX1AUXG = 0dB; MX2AUXG = 0dB; LDBOOST = MUTE; RDBOOST = MUTE
-	fnAudioWriteToReg(R4_ANALOG_PATH, 0b000010010);
+	fnAudioWriteToReg(R4_ANALOG_PATH, 0b000000010);
 	fnAudioWriteToReg(R5_DIGITAL_PATH, 0b000000000);
 	if (Demo.u8Verbose)
 	{
