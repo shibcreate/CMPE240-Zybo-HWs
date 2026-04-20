@@ -2,7 +2,7 @@
 //Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
 //--------------------------------------------------------------------------------
 //Tool Version: Vivado v.2025.2.1 (win64) Build 6403652 Thu Mar 19 19:48:24 GMT 2026
-//Date        : Sun Apr 19 17:58:37 2026
+//Date        : Sun Apr 19 21:18:37 2026
 //Host        : SHINIKAMAINPC running 64-bit major release  (build 9200)
 //Command     : generate_target system.bd
 //Design      : system
@@ -1338,7 +1338,7 @@ module s01_couplers_imp_VQ497S
         .s_axi_wvalid(S_AXI_wvalid));
 endmodule
 
-(* CORE_GENERATION_INFO = "system,IP_Integrator,{x_ipVendor=xilinx.com,x_ipLibrary=BlockDiagram,x_ipName=system,x_ipVersion=1.00.a,x_ipLanguage=VERILOG,numBlks=30,numReposBlks=20,numNonXlnxBlks=1,numHierBlks=10,maxHierDepth=0,numSysgenBlks=0,numHlsBlks=0,numHdlrefBlks=5,numPkgbdBlks=0,bdsource=USER,synth_mode=None}" *) (* HW_HANDOFF = "system.hwdef" *) 
+(* CORE_GENERATION_INFO = "system,IP_Integrator,{x_ipVendor=xilinx.com,x_ipLibrary=BlockDiagram,x_ipName=system,x_ipVersion=1.00.a,x_ipLanguage=VERILOG,numBlks=31,numReposBlks=21,numNonXlnxBlks=1,numHierBlks=10,maxHierDepth=0,numSysgenBlks=0,numHlsBlks=0,numHdlrefBlks=6,numPkgbdBlks=0,bdsource=USER,synth_mode=None}" *) (* HW_HANDOFF = "system.hwdef" *) 
 module system
    (DDR_addr,
     DDR_ba,
@@ -1659,6 +1659,11 @@ module system
   wire stereo_to_mono_0_m_axis_TLAST;
   wire stereo_to_mono_0_m_axis_TREADY;
   wire stereo_to_mono_0_m_axis_TVALID;
+  wire [31:0]tlast_gen_0_m_axis_TDATA;
+  wire [3:0]tlast_gen_0_m_axis_TKEEP;
+  wire tlast_gen_0_m_axis_TLAST;
+  wire tlast_gen_0_m_axis_TREADY;
+  wire tlast_gen_0_m_axis_TVALID;
   wire [31:0]xfft_0_M_AXIS_DATA_TDATA;
   wire xfft_0_M_AXIS_DATA_TLAST;
   wire xfft_0_M_AXIS_DATA_TREADY;
@@ -1719,11 +1724,11 @@ module system
         .s_axi_lite_wdata(ps7_0_axi_periph_M03_AXI_WDATA),
         .s_axi_lite_wready(ps7_0_axi_periph_M03_AXI_WREADY),
         .s_axi_lite_wvalid(ps7_0_axi_periph_M03_AXI_WVALID),
-        .s_axis_s2mm_tdata(xfft_0_M_AXIS_DATA_TDATA),
-        .s_axis_s2mm_tkeep({1'b1,1'b1,1'b1,1'b1}),
-        .s_axis_s2mm_tlast(xfft_0_M_AXIS_DATA_TLAST),
-        .s_axis_s2mm_tready(xfft_0_M_AXIS_DATA_TREADY),
-        .s_axis_s2mm_tvalid(xfft_0_M_AXIS_DATA_TVALID));
+        .s_axis_s2mm_tdata(tlast_gen_0_m_axis_TDATA),
+        .s_axis_s2mm_tkeep(tlast_gen_0_m_axis_TKEEP),
+        .s_axis_s2mm_tlast(tlast_gen_0_m_axis_TLAST),
+        .s_axis_s2mm_tready(tlast_gen_0_m_axis_TREADY),
+        .s_axis_s2mm_tvalid(tlast_gen_0_m_axis_TVALID));
   system_axi_gpio_0_0 axi_gpio_0
        (.gpio_io_i(btns_4bits_tri_i),
         .ip2intc_irpt(axi_gpio_0_ip2intc_irpt),
@@ -2187,6 +2192,19 @@ module system
         .s_axis_tlast(d_axi_i2s_audio_0_AXI_S2MM_TLAST),
         .s_axis_tready(d_axi_i2s_audio_0_AXI_S2MM_TREADY),
         .s_axis_tvalid(d_axi_i2s_audio_0_AXI_S2MM_TVALID));
+  system_tlast_gen_0_0 tlast_gen_0
+       (.aclk(processing_system7_0_FCLK_CLK0),
+        .aresetn(rst_ps7_0_100M_peripheral_aresetn),
+        .m_axis_tdata(tlast_gen_0_m_axis_TDATA),
+        .m_axis_tkeep(tlast_gen_0_m_axis_TKEEP),
+        .m_axis_tlast(tlast_gen_0_m_axis_TLAST),
+        .m_axis_tready(tlast_gen_0_m_axis_TREADY),
+        .m_axis_tvalid(tlast_gen_0_m_axis_TVALID),
+        .s_axis_tdata(xfft_0_M_AXIS_DATA_TDATA),
+        .s_axis_tkeep({1'b1,1'b1,1'b1,1'b1}),
+        .s_axis_tlast(xfft_0_M_AXIS_DATA_TLAST),
+        .s_axis_tready(xfft_0_M_AXIS_DATA_TREADY),
+        .s_axis_tvalid(xfft_0_M_AXIS_DATA_TVALID));
   system_xfft_0_0 xfft_0
        (.aclk(processing_system7_0_FCLK_CLK0),
         .m_axis_data_tdata(xfft_0_M_AXIS_DATA_TDATA),

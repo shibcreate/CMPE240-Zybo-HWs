@@ -280,36 +280,31 @@ int main(void)
 			// Invalidate cache to read fresh DMA data
 			Xil_DCacheInvalidateRange(doneBuf, FFT_FRAME_BYTES);
 
-			// DMA channel halts on every transfer due to TLAST mismatch
-			// from the FFT IP. Re-init the DMA for each new transfer.
-			if (Demo.fDmaError)
-			{
-				Demo.fDmaError = 0;
-				fnConfigDma(&sAxiDma);
-				XAxiDma_IntrDisable(&sAxiDma, XAXIDMA_IRQ_ALL_MASK,
-						XAXIDMA_DMA_TO_DEVICE);
-			}
-
 			// Start next DMA receive
 			XAxiDma_SimpleTransfer(&sAxiDma, nextBuf, FFT_FRAME_BYTES,
 					XAXIDMA_DEVICE_TO_DMA);
 
-			// Print FFT magnitudes every 100 frames (~0.5s) for debug
+			// Print FFT data every 100 frames (~0.5s) for debug
 			frameCount++;
 			if (frameCount >= 100)
 			{
 				frameCount = 0;
 				u32 *pBuf = (u32 *)doneBuf;
 
-				xil_printf("FFT bins: ");
-				// Print first 8 bins (DC + low frequencies)
+				// Raw hex dump of first 8 words
+				xil_printf("RAW: ");
+				for (int i = 0; i < 8; i++)
+					xil_printf("%08x ", pBuf[i]);
+				xil_printf("\r\n");
+
+				// Decoded re/im and magnitude
+				xil_printf("MAG: ");
 				for (int i = 0; i < 8; i++)
 				{
 					int16_t re = (int16_t)(pBuf[i] & 0xFFFF);
 					int16_t im = (int16_t)((pBuf[i] >> 16) & 0xFFFF);
-					// Approximate magnitude (no sqrt for speed)
 					int32_t mag = (int32_t)re * re + (int32_t)im * im;
-					xil_printf("%d ", mag >> 10); // Scale down for readability
+					xil_printf("%d ", mag >> 10);
 				}
 				xil_printf("\r\n");
 			}
@@ -321,10 +316,11 @@ int main(void)
 			Demo.fDmaMM2SEvent = 0;
 		}
 
-		// DMA error without data — shouldn't happen normally
+		// DMA error recovery
 		if (Demo.fDmaError)
 		{
 			Demo.fDmaError = 0;
+			xil_printf("DMA error — resetting\r\n");
 			fnConfigDma(&sAxiDma);
 			XAxiDma_IntrDisable(&sAxiDma, XAXIDMA_IRQ_ALL_MASK,
 					XAXIDMA_DMA_TO_DEVICE);
