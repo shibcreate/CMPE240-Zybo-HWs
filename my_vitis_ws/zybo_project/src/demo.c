@@ -439,17 +439,29 @@ int main(void)
 			Demo.fUserIOEvent = 0;
 		}
 
-		// Debug: periodically check I2S and DMA status
-		if (audioOn && !Demo.fDmaS2MMEvent)
+		// Watchdog: if DMA S2MM stalls (no completion), reset and restart
 		{
-			static int dbgCount = 0;
-			dbgCount++;
-			if (dbgCount >= 5000000)
+			static int stallCount = 0;
+			if (audioOn && !Demo.fDmaS2MMEvent)
 			{
-				dbgCount = 0;
-				u32 i2s_sr = Xil_In32(I2S_STATUS_REG);
-				u32 dma_sr = XAxiDma_ReadReg(sAxiDma.RegBase + XAXIDMA_RX_OFFSET, XAXIDMA_SR_OFFSET);
-				xil_printf("I2S_SR=0x%08x DMA_S2MM_SR=0x%08x\r\n", i2s_sr, dma_sr);
+				stallCount++;
+				if (stallCount >= 2000000)
+				{
+					stallCount = 0;
+					XAxiDma_Reset(&sAxiDma);
+					int timeout = 1000;
+					while (timeout && !XAxiDma_ResetIsDone(&sAxiDma)) timeout--;
+					fnConfigDma(&sAxiDma);
+					XAxiDma_IntrDisable(&sAxiDma, XAXIDMA_IRQ_ALL_MASK,
+							XAXIDMA_DMA_TO_DEVICE);
+					u32 nextBuf = (rxBufIdx == 0) ? (u32)FFT_BUF_A : (u32)FFT_BUF_B;
+					XAxiDma_SimpleTransfer(&sAxiDma, nextBuf, FFT_FRAME_BYTES,
+							XAXIDMA_DEVICE_TO_DMA);
+				}
+			}
+			else
+			{
+				stallCount = 0;
 			}
 		}
 

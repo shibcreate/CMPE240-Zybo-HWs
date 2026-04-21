@@ -5305,7 +5305,12 @@
         "xci_name": "system_v_axi4s_vid_out_0_0",
         "xci_path": "ip\\system_v_axi4s_vid_out_0_0\\system_v_axi4s_vid_out_0_0.xci",
         "inst_hier_path": "v_axi4s_vid_out_0",
-        "has_run_ip_tcl": "true"
+        "has_run_ip_tcl": "true",
+        "parameters": {
+          "C_HAS_ASYNC_CLK": {
+            "value": "1"
+          }
+        }
       },
       "rgb2dvi_0": {
         "vlnv": "digilentinc.com:ip:rgb2dvi:1.4",
@@ -6154,7 +6159,8 @@
         "ports": [
           "axi_dynclk_0/PXL_CLK_O",
           "rgb2dvi_0/PixelClk",
-          "v_tc_0/clk"
+          "v_tc_0/clk",
+          "v_axi4s_vid_out_0/vid_io_out_clk"
         ]
       },
       "axi_gpio_0_ip2intc_irpt": {
