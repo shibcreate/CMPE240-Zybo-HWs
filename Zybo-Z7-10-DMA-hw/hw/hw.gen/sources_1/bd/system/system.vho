@@ -81,6 +81,10 @@ COMPONENT system
     IIC_sda_o : OUT STD_LOGIC;
     IIC_sda_t : OUT STD_LOGIC;
     btns_4bits_tri_i : IN STD_LOGIC_VECTOR(3 DOWNTO 0);
+    TMDS_0_clk_p : OUT STD_LOGIC;
+    TMDS_0_clk_n : OUT STD_LOGIC;
+    TMDS_0_data_p : OUT STD_LOGIC_VECTOR(2 DOWNTO 0);
+    TMDS_0_data_n : OUT STD_LOGIC_VECTOR(2 DOWNTO 0);
     ac_bclk : OUT STD_LOGIC;
     ac_mclk : OUT STD_LOGIC;
     ac_muten : OUT STD_LOGIC_VECTOR(0 DOWNTO 0);
@@ -126,6 +130,10 @@ your_instance_name : system
     IIC_sda_o => IIC_sda_o,
     IIC_sda_t => IIC_sda_t,
     btns_4bits_tri_i => btns_4bits_tri_i,
+    TMDS_0_clk_p => TMDS_0_clk_p,
+    TMDS_0_clk_n => TMDS_0_clk_n,
+    TMDS_0_data_p => TMDS_0_data_p,
+    TMDS_0_data_n => TMDS_0_data_n,
     ac_bclk => ac_bclk,
     ac_mclk => ac_mclk,
     ac_muten => ac_muten,

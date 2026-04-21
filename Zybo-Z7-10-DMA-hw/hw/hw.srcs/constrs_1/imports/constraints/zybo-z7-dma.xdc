@@ -18,3 +18,13 @@ set_property -dict { PACKAGE_PIN Y16   IOSTANDARD LVCMOS33 } [get_ports {btns_4b
 ##Audio Codec/external EEPROM IIC bus
 set_property -dict { PACKAGE_PIN N18   IOSTANDARD LVCMOS33 } [get_ports IIC_scl_io]; #IO_L13P_T2_MRCC_34 Sch=AC_SCL
 set_property -dict { PACKAGE_PIN N17   IOSTANDARD LVCMOS33 } [get_ports IIC_sda_io]; #IO_L23P_T3_34 Sch=AC_SDA
+
+##HDMI TX
+set_property -dict { PACKAGE_PIN H16  IOSTANDARD TMDS_33 } [get_ports TMDS_0_clk_p]
+set_property -dict { PACKAGE_PIN H17  IOSTANDARD TMDS_33 } [get_ports TMDS_0_clk_n]
+set_property -dict { PACKAGE_PIN D19  IOSTANDARD TMDS_33 } [get_ports {TMDS_0_data_p[0]}]
+set_property -dict { PACKAGE_PIN D20  IOSTANDARD TMDS_33 } [get_ports {TMDS_0_data_n[0]}]
+set_property -dict { PACKAGE_PIN C20  IOSTANDARD TMDS_33 } [get_ports {TMDS_0_data_p[1]}]
+set_property -dict { PACKAGE_PIN B20  IOSTANDARD TMDS_33 } [get_ports {TMDS_0_data_n[1]}]
+set_property -dict { PACKAGE_PIN B19  IOSTANDARD TMDS_33 } [get_ports {TMDS_0_data_p[2]}]
+set_property -dict { PACKAGE_PIN A20  IOSTANDARD TMDS_33 } [get_ports {TMDS_0_data_n[2]}]

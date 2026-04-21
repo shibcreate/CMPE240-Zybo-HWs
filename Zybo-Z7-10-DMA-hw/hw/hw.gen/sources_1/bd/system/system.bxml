@@ -1,13 +1,26 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Root MajorVersion="0" MinorVersion="43">
-  <CompositeFile CompositeFileTopName="system" CanBeSetAsTop="true" CanDisplayChildGraph="true">
+  <CompositeFile CompositeFileTopName="system" CanBeSetAsTop="false" CanDisplayChildGraph="true">
     <Description>Composite Fileset</Description>
-    <Generation Name="SYNTHESIS" State="GENERATED" Timestamp="1776658717"/>
-    <Generation Name="SIMULATION" State="GENERATED" Timestamp="1776658717"/>
-    <Generation Name="IMPLEMENTATION" State="GENERATED" Timestamp="1776658717"/>
-    <Generation Name="HW_HANDOFF" State="GENERATED" Timestamp="1776658717"/>
-    <Generation Name="INSTANTIATION_TEMPLATE" State="GENERATED" Timestamp="1776658717"/>
+    <Generation Name="SYNTHESIS" State="GENERATED" Timestamp="1776740347"/>
+    <Generation Name="SIMULATION" State="GENERATED" Timestamp="1776740347"/>
+    <Generation Name="IMPLEMENTATION" State="GENERATED" Timestamp="1776740347"/>
+    <Generation Name="HW_HANDOFF" State="GENERATED" Timestamp="1776740347"/>
+    <Generation Name="INSTANTIATION_TEMPLATE" State="GENERATED" Timestamp="1776740347"/>
     <FileCollection Name="SOURCES" Type="SOURCES">
+      <File Name="synth\system.v" Type="Verilog">
+        <Properties IsEditable="false" IsVisible="true" IsNetlistSimulation="false" Timestamp="0" IsTrackable="false" IsStatusTracked="false"/>
+        <Library Name="xil_defaultlib"/>
+        <UsedIn Val="SYNTHESIS"/>
+        <UsedIn Val="IMPLEMENTATION"/>
+        <ProcessingOrder Val="NORMAL"/>
+      </File>
+      <File Name="sim\system.v" Type="Verilog">
+        <Properties IsEditable="false" IsVisible="true" IsNetlistSimulation="false" Timestamp="0" IsTrackable="false" IsStatusTracked="false"/>
+        <Library Name="xil_defaultlib"/>
+        <UsedIn Val="SIMULATION"/>
+        <ProcessingOrder Val="NORMAL"/>
+      </File>
       <File Name="system.vho" Type="VhdlTemplate">
         <Properties IsEditable="false" IsVisible="true" IsNetlistSimulation="false" Timestamp="0" IsTrackable="false" IsStatusTracked="false"/>
         <Library Name="xil_defaultlib"/>
@@ -21,19 +34,6 @@
       <File Name="system_sv.sveo" Type="SystemVerilogTemplate">
         <Properties IsEditable="false" IsVisible="true" IsNetlistSimulation="false" Timestamp="0" IsTrackable="false" IsStatusTracked="false"/>
         <Library Name="xil_defaultlib"/>
-        <ProcessingOrder Val="NORMAL"/>
-      </File>
-      <File Name="synth\system.v" Type="Verilog">
-        <Properties IsEditable="false" IsVisible="true" IsNetlistSimulation="false" Timestamp="0" IsTrackable="false" IsStatusTracked="false"/>
-        <Library Name="xil_defaultlib"/>
-        <UsedIn Val="SYNTHESIS"/>
-        <UsedIn Val="IMPLEMENTATION"/>
-        <ProcessingOrder Val="NORMAL"/>
-      </File>
-      <File Name="sim\system.v" Type="Verilog">
-        <Properties IsEditable="false" IsVisible="true" IsNetlistSimulation="false" Timestamp="0" IsTrackable="false" IsStatusTracked="false"/>
-        <Library Name="xil_defaultlib"/>
-        <UsedIn Val="SIMULATION"/>
         <ProcessingOrder Val="NORMAL"/>
       </File>
       <File Name="system_ooc.xdc" Type="XDC">

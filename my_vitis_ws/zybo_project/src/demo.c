@@ -17,8 +17,10 @@
 #include "intc/intc.h"
 #include "userio/userio.h"
 #include "iic/iic.h"
+#include "display_ctrl/display_ctrl.h"
 
 #include "xaxidma.h"
+#include "xaxivdma.h"
 #include "xparameters.h"
 #include "xil_exception.h"
 #include "xdebug.h"
@@ -52,17 +54,22 @@
 #define NUM_BARS               32
 #define BINS_PER_BAR           (USABLE_BINS / NUM_BARS)
 
-// HDMI framebuffer (640x480 @ 32bpp = 0x12C000 bytes)
+// HDMI framebuffer (640x480 @ 24bpp RGB888, 3 bytes/pixel)
 #define SCREEN_WIDTH           640
 #define SCREEN_HEIGHT          480
+#define STRIDE                 (SCREEN_WIDTH * 3)
 #define BAR_MAX_HEIGHT         400
 #define BAR_BASELINE           (SCREEN_HEIGHT - 40)
 #define BAR_WIDTH              (SCREEN_WIDTH / NUM_BARS)
 #define BAR_GAP                2
-#define FRAME_BUF_ADDR         (MEM_BASE_ADDR + 0x01000000)
-#define FRAME_BUF_SIZE         (SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(u32))
+#define FRAME_BUF_SIZE         (SCREEN_WIDTH * SCREEN_HEIGHT * 3)
 #define MAG_SCALE              10.0f
-#define NOISE_FLOOR            20000.0f
+#define NOISE_FLOOR            50.0f
+
+// HDMI display IP addresses (populated after Vivado block design update)
+#define DYNCLK_BASEADDR        XPAR_AXI_DYNCLK_0_S_AXI_LITE_BASEADDR
+#define VTC_OUT_ID             XPAR_V_TC_OUT_DEVICE_ID
+#define VDMA_ID                XPAR_AXIVDMA_0_DEVICE_ID
 
 // Gain: toggle between 0dB and boosted via codec registers
 #define DAC_VOL_0DB            0b101111001
@@ -83,6 +90,14 @@ static u32      barHeights[NUM_BARS];
 static XIic sIic;
 static XAxiDma sAxiDma;
 static XGpio sUserIO;
+static XAxiVdma sVdma;
+static DisplayCtrl sDispCtrl;
+
+// Framebuffers for HDMI output (aligned for DMA)
+static u8 frameBuf[DISPLAY_NUM_FRAMES][SCREEN_HEIGHT][STRIDE] __attribute__((aligned(0x20)));
+static u8 *framePtrs[DISPLAY_NUM_FRAMES] = {
+	frameBuf[0][0], frameBuf[1][0], frameBuf[2][0], frameBuf[3][0]
+};
 
 #ifdef XPAR_INTC_0_DEVICE_ID
  static XIntc sIntc;
@@ -144,17 +159,21 @@ static void fnStopAudio(void)
 
 /************************** Spectrum Processing *******************************/
 
-// Clear framebuffer to black
+// Clear all framebuffers to black
 static void initFramebuffer(void)
 {
-	memset((void *)FRAME_BUF_ADDR, 0, FRAME_BUF_SIZE);
-	Xil_DCacheFlushRange((UINTPTR)FRAME_BUF_ADDR, FRAME_BUF_SIZE);
+	for (int i = 0; i < DISPLAY_NUM_FRAMES; i++)
+	{
+		memset(frameBuf[i], 0, FRAME_BUF_SIZE);
+		Xil_DCacheFlushRange((UINTPTR)frameBuf[i], FRAME_BUF_SIZE);
+	}
 }
 
-// Render bar graph into the HDMI framebuffer
+// Render bar graph into the HDMI framebuffer (24bpp RGB888)
+// Pixel layout: byte[0]=blue, byte[1]=green, byte[2]=red (per display_ctrl color bit positions)
 static void renderBars(void)
 {
-	u32 *fb = (u32 *)FRAME_BUF_ADDR;
+	u8 *fb = frameBuf[sDispCtrl.curFrame][0];
 
 	for (int b = 0; b < NUM_BARS; b++)
 	{
@@ -167,7 +186,12 @@ static void renderBars(void)
 		{
 			// Black above bar
 			for (int y = 0; y < bar_top; y++)
-				fb[y * SCREEN_WIDTH + x] = 0x00000000;
+			{
+				int offset = y * STRIDE + x * 3;
+				fb[offset]     = 0; // blue
+				fb[offset + 1] = 0; // green
+				fb[offset + 2] = 0; // red
+			}
 
 			// Bar: bright green at top, dark green at bottom
 			if (height > 0)
@@ -176,17 +200,25 @@ static void renderBars(void)
 				{
 					int dist = y - bar_top;
 					u8 g = (u8)(255 - (dist * 191) / (int)height);
-					fb[y * SCREEN_WIDTH + x] = (u32)(g << 8);
+					int offset = y * STRIDE + x * 3;
+					fb[offset]     = 0; // blue
+					fb[offset + 1] = g; // green
+					fb[offset + 2] = 0; // red
 				}
 			}
 
 			// Black below baseline
 			for (int y = BAR_BASELINE + 1; y < SCREEN_HEIGHT; y++)
-				fb[y * SCREEN_WIDTH + x] = 0x00000000;
+			{
+				int offset = y * STRIDE + x * 3;
+				fb[offset]     = 0; // blue
+				fb[offset + 1] = 0; // green
+				fb[offset + 2] = 0; // red
+			}
 		}
 	}
 
-	Xil_DCacheFlushRange((UINTPTR)FRAME_BUF_ADDR, FRAME_BUF_SIZE);
+	Xil_DCacheFlushRange((UINTPTR)fb, FRAME_BUF_SIZE);
 }
 
 // Full PS processing: magnitude computation, binning, gain, render
@@ -239,30 +271,35 @@ int main(void)
 
 	xil_printf("\r\n--- Entering main() --- \r\n");
 
+	xil_printf("Init INTC...\r\n");
 	Status = fnInitInterruptController(&sIntc);
 	if(Status != XST_SUCCESS) {
 		xil_printf("Error initializing interrupts");
 		return XST_FAILURE;
 	}
 
+	xil_printf("Init IIC...\r\n");
 	Status = fnInitIic(&sIic);
 	if(Status != XST_SUCCESS) {
 		xil_printf("Error initializing I2C controller");
 		return XST_FAILURE;
 	}
 
+	xil_printf("Init UserIO...\r\n");
 	Status = fnInitUserIO(&sUserIO);
 	if(Status != XST_SUCCESS) {
 		xil_printf("User I/O ERROR");
 		return XST_FAILURE;
 	}
 
+	xil_printf("Init DMA...\r\n");
 	Status = fnConfigDma(&sAxiDma);
 	if(Status != XST_SUCCESS) {
 		xil_printf("DMA configuration ERROR");
 		return XST_FAILURE;
 	}
 
+	xil_printf("Init Audio...\r\n");
 	Status = fnInitAudio();
 	if(Status != XST_SUCCESS) {
 		xil_printf("Audio initializing ERROR");
@@ -270,6 +307,7 @@ int main(void)
 	}
 
 	// Wait for codec to stabilize
+	xil_printf("Codec stabilize...\r\n");
 	{
 		XTime tStart, tEnd;
 		XTime_GetTime(&tStart);
@@ -291,6 +329,46 @@ int main(void)
 
 	fnSetLineInput();
 
+	// --- HDMI Display Init ---
+	xil_printf("Init VDMA...\r\n");
+	{
+		XAxiVdma_Config *vdmaConfig = XAxiVdma_LookupConfig(VDMA_ID);
+		if (!vdmaConfig) {
+			xil_printf("VDMA config not found\r\n");
+			return XST_FAILURE;
+		}
+		Status = XAxiVdma_CfgInitialize(&sVdma, vdmaConfig, vdmaConfig->BaseAddress);
+		if (Status != XST_SUCCESS) {
+			xil_printf("VDMA init ERROR %d\r\n", Status);
+			return XST_FAILURE;
+		}
+	}
+
+	xil_printf("Init Display...\r\n");
+	Status = DisplayInitialize(&sDispCtrl, &sVdma, VTC_OUT_ID,
+			DYNCLK_BASEADDR, framePtrs, STRIDE);
+	if (Status != XST_SUCCESS) {
+		xil_printf("Display init ERROR %d\r\n", Status);
+		return XST_FAILURE;
+	}
+
+	xil_printf("Set mode 640x480...\r\n");
+	Status = DisplaySetMode(&sDispCtrl, &VMODE_640x480);
+	if (Status != XST_SUCCESS) {
+		xil_printf("Display set mode ERROR\r\n");
+		return XST_FAILURE;
+	}
+
+	xil_printf("Init framebuffer...\r\n");
+	initFramebuffer();
+
+	xil_printf("Display start...\r\n");
+	Status = DisplayStart(&sDispCtrl);
+	if (Status != XST_SUCCESS) {
+		xil_printf("Display start ERROR\r\n");
+		return XST_FAILURE;
+	}
+
 	xil_printf("----------------------------------------------------------\r\n");
 	xil_printf("Zybo Z7-10 Audio Spectrum Analyzer\r\n");
 	xil_printf("----------------------------------------------------------\r\n");
@@ -298,10 +376,8 @@ int main(void)
 	xil_printf("  BTN2: Toggle gain boost (+18dB)\r\n");
 	xil_printf("----------------------------------------------------------\r\n");
 	xil_printf("Audio OFF | Gain: 0dB\r\n");
-	xil_printf("Framebuffer at 0x%08x (%dx%d)\r\n",
-			FRAME_BUF_ADDR, SCREEN_WIDTH, SCREEN_HEIGHT);
-
-	initFramebuffer();
+	xil_printf("HDMI: 640x480 @ 24bpp, framebuf at 0x%08x\r\n",
+			(u32)framePtrs[0]);
 
 	while(1) {
 
@@ -412,6 +488,11 @@ int main(void)
 			if (frameCount >= 230)
 			{
 				frameCount = 0;
+				// Raw DMA buffer words (before processFFTFrame)
+				u32 *dbgBuf = (u32 *)doneBuf;
+				xil_printf("DMA raw[0-7]: %08x %08x %08x %08x %08x %08x %08x %08x\r\n",
+					dbgBuf[0], dbgBuf[1], dbgBuf[2], dbgBuf[3],
+					dbgBuf[4], dbgBuf[5], dbgBuf[6], dbgBuf[7]);
 				xil_printf("Bars: ");
 				for (int i = 0; i < 8; i++)
 					xil_printf("%d ", barHeights[i]);

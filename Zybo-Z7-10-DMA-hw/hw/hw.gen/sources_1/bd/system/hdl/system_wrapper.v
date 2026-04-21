@@ -2,7 +2,7 @@
 //Copyright 2022-2026 Advanced Micro Devices, Inc. All Rights Reserved.
 //--------------------------------------------------------------------------------
 //Tool Version: Vivado v.2025.2.1 (win64) Build 6403652 Thu Mar 19 19:48:24 GMT 2026
-//Date        : Sun Apr 19 21:18:37 2026
+//Date        : Mon Apr 20 19:59:06 2026
 //Host        : SHINIKAMAINPC running 64-bit major release  (build 9200)
 //Command     : generate_target system_wrapper.bd
 //Design      : system_wrapper
@@ -34,6 +34,10 @@ module system_wrapper
     FIXED_IO_ps_srstb,
     IIC_scl_io,
     IIC_sda_io,
+    TMDS_0_clk_n,
+    TMDS_0_clk_p,
+    TMDS_0_data_n,
+    TMDS_0_data_p,
     ac_bclk,
     ac_mclk,
     ac_muten,
@@ -65,6 +69,10 @@ module system_wrapper
   inout FIXED_IO_ps_srstb;
   inout IIC_scl_io;
   inout IIC_sda_io;
+  output TMDS_0_clk_n;
+  output TMDS_0_clk_p;
+  output [2:0]TMDS_0_data_n;
+  output [2:0]TMDS_0_data_p;
   output ac_bclk;
   output ac_mclk;
   output [0:0]ac_muten;
@@ -103,6 +111,10 @@ module system_wrapper
   wire IIC_sda_io;
   wire IIC_sda_o;
   wire IIC_sda_t;
+  wire TMDS_0_clk_n;
+  wire TMDS_0_clk_p;
+  wire [2:0]TMDS_0_data_n;
+  wire [2:0]TMDS_0_data_p;
   wire ac_bclk;
   wire ac_mclk;
   wire [0:0]ac_muten;
@@ -150,6 +162,10 @@ module system_wrapper
         .IIC_sda_i(IIC_sda_i),
         .IIC_sda_o(IIC_sda_o),
         .IIC_sda_t(IIC_sda_t),
+        .TMDS_0_clk_n(TMDS_0_clk_n),
+        .TMDS_0_clk_p(TMDS_0_clk_p),
+        .TMDS_0_data_n(TMDS_0_data_n),
+        .TMDS_0_data_p(TMDS_0_data_p),
         .ac_bclk(ac_bclk),
         .ac_mclk(ac_mclk),
         .ac_muten(ac_muten),

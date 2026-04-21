@@ -82,6 +82,10 @@ system your_instance_name (
   .IIC_sda_o(IIC_sda_o), // output wire IIC_sda_o
   .IIC_sda_t(IIC_sda_t), // output wire IIC_sda_t
   .btns_4bits_tri_i(btns_4bits_tri_i), // input wire [3:0] btns_4bits_tri_i
+  .TMDS_0_clk_p(TMDS_0_clk_p), // output wire TMDS_0_clk_p
+  .TMDS_0_clk_n(TMDS_0_clk_n), // output wire TMDS_0_clk_n
+  .TMDS_0_data_p(TMDS_0_data_p), // output wire [2:0] TMDS_0_data_p
+  .TMDS_0_data_n(TMDS_0_data_n), // output wire [2:0] TMDS_0_data_n
   .ac_bclk(ac_bclk), // output wire ac_bclk
   .ac_mclk(ac_mclk), // output wire ac_mclk
   .ac_muten(ac_muten), // output wire [0:0] ac_muten

@@ -110,6 +110,14 @@ module system_sv (
   (* X_INTERFACE_IGNORE = "true" *)
   input wire [3:0] btns_4bits_tri_i,
   (* X_INTERFACE_IGNORE = "true" *)
+  output wire TMDS_0_clk_p,
+  (* X_INTERFACE_IGNORE = "true" *)
+  output wire TMDS_0_clk_n,
+  (* X_INTERFACE_IGNORE = "true" *)
+  output wire [2:0] TMDS_0_data_p,
+  (* X_INTERFACE_IGNORE = "true" *)
+  output wire [2:0] TMDS_0_data_n,
+  (* X_INTERFACE_IGNORE = "true" *)
   output wire ac_bclk,
   (* X_INTERFACE_IGNORE = "true" *)
   output wire ac_mclk,
@@ -154,6 +162,10 @@ module system_sv (
     .IIC_sda_o(IIC_sda_o),
     .IIC_sda_t(IIC_sda_t),
     .btns_4bits_tri_i(btns_4bits_tri_i),
+    .TMDS_0_clk_p(TMDS_0_clk_p),
+    .TMDS_0_clk_n(TMDS_0_clk_n),
+    .TMDS_0_data_p(TMDS_0_data_p),
+    .TMDS_0_data_n(TMDS_0_data_n),
     .ac_bclk(ac_bclk),
     .ac_mclk(ac_mclk),
     .ac_muten(ac_muten),
