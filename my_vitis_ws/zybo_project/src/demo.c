@@ -259,13 +259,22 @@ static const u8 font5x7[][5] = {
 	['C'] = {0x3E,0x41,0x41,0x41,0x22},
 	['D'] = {0x7F,0x41,0x41,0x22,0x1C},
 	['E'] = {0x7F,0x49,0x49,0x49,0x41},
+	['F'] = {0x7F,0x09,0x09,0x09,0x01},
 	['G'] = {0x3E,0x41,0x49,0x49,0x3A},
 	['H'] = {0x7F,0x08,0x08,0x08,0x7F},
 	['I'] = {0x00,0x41,0x7F,0x41,0x00},
 	['L'] = {0x7F,0x40,0x40,0x40,0x40},
+	['M'] = {0x7F,0x02,0x0C,0x02,0x7F},
+	['N'] = {0x7F,0x04,0x08,0x10,0x7F},
 	['O'] = {0x3E,0x41,0x41,0x41,0x3E},
+	['P'] = {0x7F,0x09,0x09,0x09,0x06},
+	['R'] = {0x7F,0x09,0x19,0x29,0x46},
 	['S'] = {0x26,0x49,0x49,0x49,0x32},
+	['T'] = {0x01,0x01,0x7F,0x01,0x01},
+	['U'] = {0x3F,0x40,0x40,0x40,0x3F},
 	['V'] = {0x1F,0x20,0x40,0x20,0x1F},
+	['Y'] = {0x07,0x08,0x70,0x08,0x07},
+	['Z'] = {0x61,0x51,0x49,0x45,0x43},
 };
 
 static void drawChar(u8 *fb, int cx, int cy, char ch, u8 r, u8 g, u8 b, int scale)
@@ -318,14 +327,19 @@ static void renderBars(void)
 {
 	u8 *fb = frameBuf[drawFrame][0];
 
-	/* Fast clear: fill one scanline then memcpy to the rest */
-	for (int x = 0; x < SCREEN_WIDTH; x++)
+	/* Subtle vertical gradient background: dark top → slightly lighter bottom */
+	for (int y = 0; y < SCREEN_HEIGHT; y++)
 	{
-		int off = x * 3;
-		fb[off] = BG_B; fb[off+1] = BG_G; fb[off+2] = BG_R;
+		int t = y * 6 / SCREEN_HEIGHT;  /* 0-5 brightness boost top to bottom */
+		u8 br = BG_R + t;
+		u8 bg = BG_G + t;
+		u8 bb = BG_B + t + t;  /* slight blue shift at bottom */
+		for (int x = 0; x < SCREEN_WIDTH; x++)
+		{
+			int off = y * STRIDE + x * 3;
+			fb[off] = bb; fb[off+1] = bg; fb[off+2] = br;
+		}
 	}
-	for (int y = 1; y < SCREEN_HEIGHT; y++)
-		memcpy(fb + y * STRIDE, fb, STRIDE);
 
 	for (int b = 0; b < NUM_BARS; b++)
 	{
@@ -401,6 +415,31 @@ static void renderBars(void)
 	drawString(fb, bassMid, labelY, "BASS",  barColorR[0], barColorG[0], barColorB[0], 2);
 	drawString(fb, midsMid, labelY, "VOCAL", barColorR[BASS_BARS], barColorG[BASS_BARS], barColorB[BASS_BARS], 2);
 	drawString(fb, highMid, labelY, "HIGH",  barColorR[BASS_BARS+MID_BARS], barColorG[BASS_BARS+MID_BARS], barColorB[BASS_BARS+MID_BARS], 2);
+
+	/* Title text — centered, dimmed so it doesn't compete with bars */
+	const char *title = "SPECTRUM ANALYZER";
+	int titleLen = 17;
+	int titleX = (SCREEN_WIDTH - titleLen * 6 * 2) / 2;  /* scale=2, 6px per char */
+	drawString(fb, titleX, 10, title, 50, 55, 70, 2);
+
+	/* Top color bar: thin line that reflects dominant frequency group */
+	float bassE = 0, vocalE = 0, highE = 0;
+	for (int b = 0; b < BASS_BARS; b++) bassE += barHeights[b];
+	for (int b = BASS_BARS; b < BASS_BARS + MID_BARS; b++) vocalE += barHeights[b];
+	for (int b = BASS_BARS + MID_BARS; b < NUM_BARS; b++) highE += barHeights[b];
+	float total = bassE + vocalE + highE;
+	float bw = 0, vw = 0, hw = 0;
+	if (total > 0) { bw = bassE / total; vw = vocalE / total; hw = highE / total; }
+	/* Blend group colors by energy weight */
+	u8 topR = (u8)(barColorR[0] * bw + barColorR[BASS_BARS] * vw + barColorR[BASS_BARS+MID_BARS] * hw);
+	u8 topG = (u8)(barColorG[0] * bw + barColorG[BASS_BARS] * vw + barColorG[BASS_BARS+MID_BARS] * hw);
+	u8 topB = (u8)(barColorB[0] * bw + barColorB[BASS_BARS] * vw + barColorB[BASS_BARS+MID_BARS] * hw);
+	for (int y = 0; y < 3; y++)
+		for (int x = 0; x < SCREEN_WIDTH; x++)
+		{
+			int fade = 255 - y * 60;
+			setPixel(fb, x, y, topR * fade / 255, topG * fade / 255, topB * fade / 255);
+		}
 
 	Xil_DCacheFlushRange((UINTPTR)fb, FRAME_BUF_SIZE);
 
