@@ -76,7 +76,7 @@ workspace (see Steps 8-13 below).
   - In the Sources panel, expand Design Sources
   - Right-click on "system" (system.bd) block design
   - Click "Generate Output Products"
-  - Select "Global" generation, click Generate
+  - Select "Out of context per IP" generation, click Generate
   - Wait for it to complete (a few minutes)
   - This regenerates the IP cores under hw.gen/ip/ and hw.gen/ipshared/
 
@@ -205,7 +205,10 @@ workspace (see Steps 8-13 below).
 
   The source files are in my_vitis_ws/zybo_project/src/ in the repo.
   Copy the ENTIRE contents into the new application's src/ directory,
-  preserving the folder structure.
+  preserving the folder structure. This WILL overwrite the default
+  CMakeLists.txt and UserConfig.cmake that Vitis generated — that is
+  intentional, because our customized versions add the subdirectory
+  sources and include paths needed to build.
 
   Windows (PowerShell):
     Copy-Item -Recurse -Force <clone-path>\my_vitis_ws\zybo_project\src\* `
@@ -224,8 +227,8 @@ workspace (see Steps 8-13 below).
       lscript.ld           <-- Linker script
       xpar_remap.h         <-- SDT compatibility macros (REQUIRED)
       xtime_l.h            <-- Timer header (REQUIRED, missing from BSP)
+      CMakeLists.txt       <-- Customized build config (MUST overwrite default)
       UserConfig.cmake     <-- CMake config with subdirectory sources
-      CMakeLists.txt        <-- Build configuration
 
     Subdirectories (MUST keep folder structure):
       audio/audio.c, audio/audio.h       - SSM2603 codec control (I2C)
@@ -237,16 +240,24 @@ workspace (see Steps 8-13 below).
       intc/intc.c, intc/intc.h          - Interrupt controller setup
       userio/userio.c, userio/userio.h  - Button/switch GPIO handling
 
+  IMPORTANT: The copied CMakeLists.txt is customized to:
+    - Add aux_source_directory for dynclk/
+    - Add target_include_directories for all subdirectories
+      (audio, dma, iic, intc, userio, display_ctrl, dynclk)
+    - Link the math library (-lm) for sqrtf/logf in spectrum code
+  If Vitis regenerates CMakeLists.txt, re-copy ours from the repo.
+
   After copying, right-click the project in Vitis and select Refresh.
 
 ================================================================================
-  STEP 12b: VERIFY UserConfig.cmake HAS SUBDIRECTORY SOURCES
+  STEP 12b: VERIFY CMakeLists.txt AND UserConfig.cmake
 ================================================================================
 
-  The Vitis "Empty Application" CMakeLists only auto-collects .c files in
-  the top-level src/ directory. The subdirectory sources WILL NOT compile
-  unless registered. The copied UserConfig.cmake already includes them:
+  The default Vitis "Empty Application" only auto-collects .c files in
+  the top-level src/ directory. Our project has sources in subdirectories
+  that require two customized files:
 
+  UserConfig.cmake must contain:
     set(USER_COMPILE_SOURCES
       "display_ctrl/display_ctrl.c"
       "audio/audio.c"
@@ -256,13 +267,14 @@ workspace (see Steps 8-13 below).
       "userio/userio.c"
     )
 
-  Verify this is present in <workspace>/zybo_project/src/UserConfig.cmake.
-  If the file was overwritten by Vitis with a blank template, re-copy it
-  from the repo.
+  CMakeLists.txt must contain (in addition to the default content):
+    - aux_source_directory for dynclk/ (dynclk.c is NOT in UserConfig)
+    - target_include_directories for all 7 subdirectories
+    - collect(PROJECT_LIB_DEPS m)  for math library (sqrtf, logf)
 
-  NOTE: dynclk.c is compiled automatically because it lives at the path
-  Vitis discovers, but if you get linker errors for dynclk functions,
-  add "dynclk/dynclk.c" to the list above.
+  Both files are already correct in the repo copy. If Step 12 was done
+  correctly (full copy with overwrite), no manual edits are needed.
+  If Vitis regenerates either file, re-copy from the repo.
 
 ================================================================================
   STEP 13: COPY BITSTREAM INTO VITIS PROJECT
@@ -489,9 +501,11 @@ workspace (see Steps 8-13 below).
     userio/                     Button/switch GPIO handling
     xpar_remap.h                SDT compatibility macros
     xtime_l.h                   Timer header (missing from SDT BSP)
+    CMakeLists.txt              Customized build config (include dirs, dynclk, -lm)
     UserConfig.cmake            CMake config with subdirectory source list
 
-  sw_src/                       Legacy source (from phase1-audio-baseline)
+  sw_src/src/                   Mirror of my_vitis_ws/zybo_project/src/
+                                (kept in sync — either location works)
   system_wrapper.xsa            Exported hardware definition (gitignored)
   CLAUDE.md                     Developer notes (GP1 bug, HDMI addresses)
   BUILD_STEPS.txt               This file

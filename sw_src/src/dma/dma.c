@@ -34,6 +34,10 @@ void fnS2MMInterruptHandler (void *Callback)
 	if (!(IrqStatus & XAXIDMA_IRQ_ALL_MASK))
 		return;
 
+	// DMAIntErr fires every frame because the FFT does not assert TLAST
+	// at the exact byte the DMA expects. The data transfer still completes
+	// correctly by byte count, so we treat Error+IOC as a normal completion.
+	// Reset the DMA here (channel halts on any error).
 	if (IrqStatus & XAXIDMA_IRQ_ERROR_MASK)
 	{
 		Demo.fDmaError = 1;
@@ -47,6 +51,7 @@ void fnS2MMInterruptHandler (void *Callback)
 		}
 	}
 
+	// IOC means data was received — flag it regardless of error
 	if (IrqStatus & XAXIDMA_IRQ_IOC_MASK)
 	{
 		Demo.fDmaS2MMEvent = 1;

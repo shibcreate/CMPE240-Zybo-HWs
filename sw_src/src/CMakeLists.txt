@@ -6,9 +6,7 @@ include(${CMAKE_SOURCE_DIR}/Empty_applicationExample.cmake)
 # Include any additional CMake files here
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/UserConfig.cmake)
-# IMPORTANT: APP_NAME must match your Vitis component name exactly,
-# otherwise the ELF filename won't match what launch.json expects.
-set(APP_NAME zyboAudio)
+set(APP_NAME zybo_project)
 project(${APP_NAME})
 
 find_package(common)
@@ -17,6 +15,7 @@ collect(PROJECT_LIB_DEPS xilstandalone;xiltimer)
 collect(PROJECT_LIB_DEPS xil)
 collect(PROJECT_LIB_DEPS gcc)
 collect(PROJECT_LIB_DEPS c)
+collect(PROJECT_LIB_DEPS m)
 
 # Use CMAKE_LIBRARY_PATH in link_directories
 link_directories(${CMAKE_LIBRARY_PATH})
@@ -30,12 +29,9 @@ collector_list (_headers PROJECT_LIB_HEADERS)
 collector_list (_sources PROJECT_LIB_SOURCES)
 
 aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR} current_dir_sources)
-aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR}/audio audio_sources)
-aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR}/dma dma_sources)
-aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR}/iic iic_sources)
-aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR}/intc intc_sources)
-aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR}/userio userio_sources)
-list(APPEND _sources ${current_dir_sources} ${audio_sources} ${dma_sources} ${iic_sources} ${intc_sources} ${userio_sources})
+aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR}/dynclk dynclk_sources)
+list(APPEND _sources ${current_dir_sources})
+list(APPEND _sources ${dynclk_sources})
 list (APPEND _sources ${USER_COMPILE_SOURCES})
 foreach (source ${_sources})
     get_filename_component(ext ${source} EXT)
@@ -77,6 +73,8 @@ target_include_directories(${APP_NAME}.elf PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/dm
 target_include_directories(${APP_NAME}.elf PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/iic)
 target_include_directories(${APP_NAME}.elf PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/intc)
 target_include_directories(${APP_NAME}.elf PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/userio)
+target_include_directories(${APP_NAME}.elf PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/display_ctrl)
+target_include_directories(${APP_NAME}.elf PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/dynclk)
 target_include_directories(${APP_NAME}.elf PUBLIC ${USER_INCLUDE_DIRECTORIES})
 print_build_info_target(${APP_NAME}.elf "${CMAKE_C_FLAGS}" "${USER_COMPILE_DEFINITIONS}" "${CMAKE_C_LINK_FLAGS}" "${_linker_command}")
 print_elf_size(CMAKE_SIZE ${APP_NAME})
