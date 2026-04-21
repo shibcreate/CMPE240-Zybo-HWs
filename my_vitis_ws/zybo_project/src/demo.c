@@ -150,11 +150,20 @@ static void fnStartAudio(XAxiDma *pAxiDma, volatile int *pRxBufIdx)
 	xil_printf("Audio pipeline started\r\n");
 }
 
-// Stop I2S streaming
-static void fnStopAudio(void)
+// Stop I2S streaming and reset DMA
+static void fnStopAudio(XAxiDma *pAxiDma)
 {
 	Xil_Out32(I2S_STREAM_CONTROL_REG, 0x00000000);
 	Xil_Out32(I2S_TRANSFER_CONTROL_REG, 0x00000000);
+
+	// Reset DMA to cancel any pending S2MM transfer
+	XAxiDma_Reset(pAxiDma);
+	int timeout = 1000;
+	while (timeout && !XAxiDma_ResetIsDone(pAxiDma)) timeout--;
+	fnConfigDma(pAxiDma);
+	XAxiDma_IntrDisable(pAxiDma, XAXIDMA_IRQ_ALL_MASK, XAXIDMA_DMA_TO_DEVICE);
+	Demo.fDmaS2MMEvent = 0;
+	Demo.fDmaError = 0;
 }
 
 /************************** Spectrum Processing *******************************/
@@ -404,7 +413,7 @@ int main(void)
 						// Disable bypass, mute output
 						fnAudioWriteToReg(R4_ANALOG_PATH, 0b000000010);
 						fnAudioWriteToReg(R6_POWER_MGMT, 0b000110000);
-						fnStopAudio();
+						fnStopAudio(&sAxiDma);
 						xil_printf("Audio OFF | Gain: %s\r\n",
 								gainBoost ? "+18dB" : "0dB");
 					}
@@ -439,7 +448,7 @@ int main(void)
 			Demo.fUserIOEvent = 0;
 		}
 
-		// Watchdog: if DMA S2MM stalls (no completion), reset and restart
+		// Watchdog: if DMA S2MM stalls, restart entire audio pipeline
 		{
 			static int stallCount = 0;
 			if (audioOn && !Demo.fDmaS2MMEvent)
@@ -448,15 +457,8 @@ int main(void)
 				if (stallCount >= 2000000)
 				{
 					stallCount = 0;
-					XAxiDma_Reset(&sAxiDma);
-					int timeout = 1000;
-					while (timeout && !XAxiDma_ResetIsDone(&sAxiDma)) timeout--;
-					fnConfigDma(&sAxiDma);
-					XAxiDma_IntrDisable(&sAxiDma, XAXIDMA_IRQ_ALL_MASK,
-							XAXIDMA_DMA_TO_DEVICE);
-					u32 nextBuf = (rxBufIdx == 0) ? (u32)FFT_BUF_A : (u32)FFT_BUF_B;
-					XAxiDma_SimpleTransfer(&sAxiDma, nextBuf, FFT_FRAME_BYTES,
-							XAXIDMA_DEVICE_TO_DMA);
+					fnStopAudio(&sAxiDma);
+					fnStartAudio(&sAxiDma, &rxBufIdx);
 				}
 			}
 			else

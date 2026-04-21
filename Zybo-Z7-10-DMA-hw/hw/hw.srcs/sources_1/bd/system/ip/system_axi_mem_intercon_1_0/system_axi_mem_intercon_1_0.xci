@@ -1,14 +1,14 @@
 {
   "schema": "xilinx.com:schema:json_instance:1.0",
   "ip_inst": {
-    "xci_name": "system_axi_mem_intercon_0",
-    "cell_name": "axi_mem_intercon",
+    "xci_name": "system_axi_mem_intercon_1_0",
+    "cell_name": "axi_mem_intercon_1",
     "component_reference": "xilinx.com:ip:axi_interconnect:2.1",
     "ip_revision": "38",
-    "gen_directory": "../../../../../../hw.gen/sources_1/bd/system/ip/system_axi_mem_intercon_0",
+    "gen_directory": "../../../../../../hw.gen/sources_1/bd/system/ip/system_axi_mem_intercon_1_0",
     "parameters": {
       "component_parameters": {
-        "NUM_SI": [ { "value": "2", "value_src": "user", "resolve_type": "user", "format": "long", "usage": "all" } ],
+        "NUM_SI": [ { "value": "1", "resolve_type": "user", "format": "long", "usage": "all" } ],
         "NUM_MI": [ { "value": "1", "value_src": "user", "resolve_type": "user", "format": "long", "usage": "all" } ],
         "STRATEGY": [ { "value": "0", "resolve_type": "user", "format": "long", "usage": "all" } ],
         "ENABLE_ADVANCED_OPTIONS": [ { "value": "0", "resolve_type": "user", "format": "long", "usage": "all" } ],
@@ -17,7 +17,7 @@
         "PCHK_WAITS": [ { "value": "0", "resolve_type": "user", "format": "long", "usage": "all" } ],
         "PCHK_MAX_RD_BURSTS": [ { "value": "2", "resolve_type": "user", "format": "long", "usage": "all" } ],
         "PCHK_MAX_WR_BURSTS": [ { "value": "2", "resolve_type": "user", "format": "long", "usage": "all" } ],
-        "SYNCHRONIZATION_STAGES": [ { "value": "2", "value_src": "user", "value_permission": "bd_and_user", "resolve_type": "user", "format": "long", "usage": "all" } ],
+        "SYNCHRONIZATION_STAGES": [ { "value": "3", "value_permission": "bd_and_user", "resolve_type": "user", "format": "long", "usage": "all" } ],
         "M00_HAS_REGSLICE": [ { "value": "0", "resolve_type": "user", "format": "long", "usage": "all" } ],
         "M01_HAS_REGSLICE": [ { "value": "0", "resolve_type": "user", "format": "long", "usage": "all" } ],
         "M02_HAS_REGSLICE": [ { "value": "0", "resolve_type": "user", "format": "long", "usage": "all" } ],
@@ -322,11 +322,11 @@
         "S13_ARB_PRIORITY": [ { "value": "0", "resolve_type": "user", "format": "long", "usage": "all" } ],
         "S14_ARB_PRIORITY": [ { "value": "0", "resolve_type": "user", "format": "long", "usage": "all" } ],
         "S15_ARB_PRIORITY": [ { "value": "0", "resolve_type": "user", "format": "long", "usage": "all" } ],
-        "Component_Name": [ { "value": "system_axi_mem_intercon_0", "resolve_type": "user", "usage": "all" } ]
+        "Component_Name": [ { "value": "system_axi_mem_intercon_1_0", "resolve_type": "user", "usage": "all" } ]
       },
       "project_parameters": {
         "ARCHITECTURE": [ { "value": "zynq", "resolve_type": "generated", "usage": "all" } ],
-        "BASE_BOARD_PART": [ { "value": "", "resolve_type": "generated", "usage": "all" } ],
+        "BASE_BOARD_PART": [ { "value": "digilentinc.com:zybo-z7-10:part0:1.2", "resolve_type": "generated", "usage": "all" } ],
         "BOARD_CONNECTIONS": [ { "value": "", "resolve_type": "generated", "usage": "all" } ],
         "DEVICE": [ { "value": "xc7z010", "resolve_type": "generated", "usage": "all" } ],
         "PACKAGE": [ { "value": "clg400", "resolve_type": "generated", "usage": "all" } ],
@@ -341,7 +341,7 @@
         "IPCONTEXT": [ { "value": "IP_Integrator_AppCore" } ],
         "IPREVISION": [ { "value": "38" } ],
         "MANAGED": [ { "value": "TRUE" } ],
-        "OUTPUTDIR": [ { "value": "../../../../../../hw.gen/sources_1/bd/system/ip/system_axi_mem_intercon_0" } ],
+        "OUTPUTDIR": [ { "value": "../../../../../../hw.gen/sources_1/bd/system/ip/system_axi_mem_intercon_1_0" } ],
         "SELECTEDSIMMODEL": [ { "value": "" } ],
         "SHAREDDIR": [ { "value": "../../ipshared" } ],
         "SWVERSION": [ { "value": "2025.2.1" } ],
@@ -349,5 +349,5 @@
       }
     }
   },
-  "checksum": "89cd606d"
+  "checksum": "97012453"
 }

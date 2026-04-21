@@ -232,24 +232,6 @@
             },
             "V5": {
                 "VT": "AC",
-                "BA": "0x00000000",
-                "HA": "0x3FFFFFFF",
-                "BP": "C_BASEADDR",
-                "HP": "C_HIGHADDR",
-                "MA": "Data_MM2S",
-                "MX": "/axi_vdma_0",
-                "MI": "M_AXI_MM2S",
-                "MS": "SEG_processing_system7_0_HP0_DDR_LOWOCM",
-                "MV": "xilinx.com:ip:axi_vdma:6.3",
-                "SX": "/processing_system7_0",
-                "SI": "S_AXI_HP0",
-                "SS": "HP0_DDR_LOWOCM",
-                "SV": "xilinx.com:ip:processing_system7:5.5",
-                "TM": "both",
-                "TU": "memory"
-            },
-            "V6": {
-                "VT": "AC",
                 "BA": "0x40400000",
                 "HA": "0x4040FFFF",
                 "BP": "C_BASEADDR",
@@ -266,7 +248,7 @@
                 "TM": "both",
                 "TU": "register"
             },
-            "V7": {
+            "V6": {
                 "VT": "AC",
                 "BA": "0x41200000",
                 "HA": "0x4120FFFF",
@@ -284,7 +266,7 @@
                 "TM": "both",
                 "TU": "register"
             },
-            "V8": {
+            "V7": {
                 "VT": "AC",
                 "BA": "0x41600000",
                 "HA": "0x4160FFFF",
@@ -302,7 +284,7 @@
                 "TM": "both",
                 "TU": "register"
             },
-            "V9": {
+            "V8": {
                 "VT": "AC",
                 "BA": "0x43C00000",
                 "HA": "0x43C0FFFF",
@@ -320,7 +302,7 @@
                 "TM": "both",
                 "TU": "register"
             },
-            "V10": {
+            "V9": {
                 "VT": "AC",
                 "BA": "0x83000000",
                 "HA": "0x8300FFFF",
@@ -338,7 +320,7 @@
                 "TM": "both",
                 "TU": "register"
             },
-            "V11": {
+            "V10": {
                 "VT": "AC",
                 "BA": "0x83C00000",
                 "HA": "0x83C0FFFF",
@@ -356,7 +338,7 @@
                 "TM": "both",
                 "TU": "register"
             },
-            "V12": {
+            "V11": {
                 "VT": "AC",
                 "BA": "0x83C10000",
                 "HA": "0x83C1FFFF",
@@ -373,6 +355,24 @@
                 "SV": "xilinx.com:ip:v_tc:6.2",
                 "TM": "both",
                 "TU": "register"
+            },
+            "V12": {
+                "VT": "ACE",
+                "BA": "0x00000000",
+                "HA": "0x3FFFFFFF",
+                "BP": "C_BASEADDR",
+                "HP": "C_HIGHADDR",
+                "MA": "Data_MM2S",
+                "MX": "/axi_vdma_0",
+                "MI": "M_AXI_MM2S",
+                "MS": "SEG_processing_system7_0_HP2_DDR_LOWOCM",
+                "MV": "xilinx.com:ip:axi_vdma:6.3",
+                "SX": "/processing_system7_0",
+                "SI": "S_AXI_HP2",
+                "SS": "HP2_DDR_LOWOCM",
+                "SV": "xilinx.com:ip:processing_system7:5.5",
+                "TM": "both",
+                "TU": "memory"
             }
         },
         "edges": [
