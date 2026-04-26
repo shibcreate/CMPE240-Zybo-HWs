@@ -1,0 +1,277 @@
+CMPE240 Spring 2026 - Midterm Design Document vs Final Implementation
+======================================================================
+
+Board: Digilent Zybo Z7-10 (Zynq-7010, ARM Cortex-A9 + Artix-7 FPGA)
+Tools: Vivado 2025.2, Vitis 2025.2
+Team: Abirami Adaikappan, Amina Akhtar, Hemanth Karnati,
+      Shinka Balasundar, Jordan Nguyen
+
+The midterm deliverable was a Design Document (dated 3/31/2026) that
+proposed a Real-Time Mono Audio Spectrum Analyzer with HDMI
+Visualization. The final project is the working implementation of
+that design. This file compares what was planned vs what was built,
+and notes where the implementation diverged from or exceeded the
+original proposal.
+
+======================================================================
+WHAT THE MIDTERM DOCUMENT PROPOSED
+======================================================================
+
+System overview (from Section 1.2):
+  - Audio captured from SSM2603 codec via I2S at 48 kHz, 24-bit stereo
+  - Stereo-to-Mono mixer in PL: (L+R)/2 with sign extension
+  - 256-sample BRAM buffer to accumulate mono frames
+  - Xilinx FFT LogiCORE IP: 256-point, pipelined streaming, fixed-point
+  - FFT output via AXI DMA to DDR, interrupt to PS
+  - PS computes magnitudes (sqrtf on ARM FPU), bins into 16-32 bars
+  - HDMI output at 640x480 60Hz via VTC + VDMA + rgb2dvi + dynclk
+  - SW0: toggle audio on/off, SW1: digital gain boost (2x or 4x)
+
+Proposed custom Verilog modules (from Section 4.1):
+  1. I2S Receiver (bit sync, word alignment, sample capture)
+  2. Stereo-to-Mono Mixer (25-bit add + right shift, AXI4-Stream out)
+  3. FFT IP Wrapper (frame construction, tlast, data formatting)
+  4. Sample Buffer (BRAM-based, 256 x 24-bit, dual-port)
+
+Proposed Xilinx/Digilent IP (from Section 4.2):
+  - Xilinx FFT IP (256-pt, pipelined, fixed-point, AXI4-Stream)
+  - AXI DMA (S2MM mode, burst transfer, interrupt)
+  - AXI Stream FIFO (clock domain crossing)
+  - BRAM (true dual-port, 24-bit x 256)
+  - VTC, AXI Dynclk, rgb2dvi, Clocking Wizard
+  - AXI GPIO (SW0, SW1 polling)
+
+Proposed software (from Section 5):
+  - Magnitude computation: unpack 32-bit -> 16-bit Re + 16-bit Im,
+    compute sqrt(Re^2 + Im^2) using hardware FPU
+  - Frequency binning: linear binning (128 bins / 16 bars = 8 bins/bar)
+  - HDMI rendering: update bar heights in memory-mapped framebuffer
+  - GPIO polling: read SW0/SW1 at start of every frame (~46 FPS)
+  - Built on Xilinx Standalone (baremetal) library + math.h
+
+Proposed display (from Section 1.3.1):
+  - 16 to 32 vertical bars, centered, rising from baseline
+  - Simple color gradient (darker base, brighter top)
+  - "Simple and responsive rather than overly decorative"
+
+Performance targets (from Section 2.4.2):
+  - Total pipeline latency < 15 ms
+  - Data acquisition: ~5.33 ms (256 samples / 48 kHz)
+  - HW processing + DMA: < 1 ms
+  - SW processing: < 8 ms
+  - Target visualization rate: ~46 FPS
+
+Development plan (from Section 7):
+  - Weeks 1-2: Audio input (I2S + codec)
+  - Weeks 2-3: Stereo-to-mono + BRAM buffer
+  - Weeks 3-4: FFT integration (AXI4-Stream)
+  - Weeks 4-5: DMA + interrupt setup
+  - Weeks 5-6: Magnitude + binning (C code)
+  - Weeks 6-7: HDMI pipeline + framebuffer
+  - Weeks 7-8: System integration + debug
+  - Last week: Testing + optimization
+
+======================================================================
+WHAT WAS ACTUALLY IMPLEMENTED
+======================================================================
+
+The final implementation follows the midterm proposal closely but has
+several differences in module decomposition, display features, and
+fixes for hardware issues not anticipated in the design document.
+
+----------------------------------------------------------------------
+CUSTOM VERILOG MODULES: PROPOSED vs BUILT
+----------------------------------------------------------------------
+
+PROPOSED: I2S Receiver (custom)
+BUILT:    Used Digilent's existing I2S IP from the Audio Demo baseline.
+          No custom I2S receiver was written. The codec setup, I2C
+          control, and I2S interface all come from Digilent's demo.
+WHY:      The Digilent demo already had a working I2S implementation.
+          Writing one from scratch would have duplicated existing,
+          tested hardware for no benefit.
+
+PROPOSED: Stereo-to-Mono Mixer
+BUILT:    stereo_to_mono.v -- matches the proposal closely.
+          4-state FSM (WAIT_LEFT -> WAIT_RIGHT -> OUT_LEFT -> OUT_RIGHT)
+          25-bit sign-extended addition, arithmetic right shift.
+          Outputs mono on both L and R channels for audio loopback.
+
+PROPOSED: FFT IP Wrapper (single module handling config, framing, format)
+BUILT:    Split into 4 separate modules instead of one wrapper:
+          - sample_buffer.v: BRAM-based 256-sample accumulator with
+            FILL/DRAIN FSM and lr_toggle to skip duplicate R channel
+          - real_to_complex.v: combinational pass-through, packs 24-bit
+            real into {16'b imag=0, 16'b real[23:8]}
+          - fft_config.v: drives FFT config channel with 0x0155
+            (forward transform, /4 per stage pair = /256 total)
+          - tlast_gen.v: frame alignment between FFT output and DMA,
+            syncs to FFT's TLAST before allowing DMA transfer
+WHY:      Splitting the wrapper into focused modules made each piece
+          independently testable and easier to debug. The tlast_gen
+          module was added to solve a DMA TLAST mismatch bug that
+          was not anticipated in the design document.
+
+PROPOSED: Sample Buffer (BRAM with dual-port addressing)
+BUILT:    sample_buffer.v uses inferred BRAM (reg array) rather than
+          instantiating a BRAM IP. Single-port write during FILL,
+          single-port read during DRAIN. Simpler than proposed
+          dual-port scheme but sufficient for the sequential access
+          pattern.
+
+NOT PROPOSED BUT BUILT:
+  - axis_broadcast.v: 1-to-2 AXI-Stream splitter. This was needed
+    to feed both the FFT path AND the audio loopback path from the
+    same mono stream. The design document did not address how audio
+    loopback would coexist with FFT processing.
+
+----------------------------------------------------------------------
+HARDWARE ARCHITECTURE DIFFERENCES
+----------------------------------------------------------------------
+
+PROPOSED: Single DMA path, FIFO for clock domain crossing
+BUILT:    - No separate AXI Stream FIFO instantiated (the sample_buffer
+            effectively handles buffering)
+          - VDMA moved to HP2 port (audio DMA on HP0). The design
+            document assumed a single memory port. In practice, having
+            both video and audio DMA on HP0 caused backpressure stalls.
+          - axis_broadcast splits the mono stream so audio loopback
+            continues while FFT processes simultaneously
+
+PROPOSED: AXI GPIO for SW0 (audio toggle) and SW1 (gain boost)
+BUILT:    Used BTN3 for audio toggle and BTN2 for gain boost instead
+          of switches. The button/switch handling uses Digilent's
+          userio driver with interrupt-driven detection rather than
+          the proposed polling scheme. Gain multiplier is 1.5x (not
+          the proposed 2x or 4x).
+
+----------------------------------------------------------------------
+SOFTWARE DIFFERENCES
+----------------------------------------------------------------------
+
+PROPOSED: Linear frequency binning (128 bins / 16 bars = 8 bins/bar)
+BUILT:    Logarithmic frequency binning across 3 groups with 24 bars:
+            BASS:  5 bars  (bins 1-4,   ~187-750 Hz)
+            VOCAL: 10 bars (bins 4-35,  ~750 Hz - 6.6 kHz)
+            HIGH:  9 bars  (bins 35-80, ~6.6 - 15 kHz)
+          Per-group gain normalization:
+            Bass 0.4x, Vocal 1.0x, High 1.8x
+WHY:      Linear binning makes bass frequencies unreadable (too few
+          bins per bar in the low range) and wastes bars on inaudible
+          high frequencies. Log binning matches human hearing.
+
+PROPOSED: Simple bar graph, minimal decoration
+BUILT:    Significantly more visual features than proposed:
+          - Smooth decay (bars fall at 70% per frame, not instant drop)
+          - Peak-hold dots (white, hold 12 frames, fall at 4 px/frame)
+          - Gradient background (dark top to lighter bottom)
+          - Brightness gradient on bars (bright top, dark base)
+          - 3px glow highlight at bar peaks
+          - Mirror reflections below baseline
+          - Group labels: BASS, VOCAL, HIGH
+          - Title text: "SPECTRUM ANALYZER"
+          - Reactive color bar at top (blends by frequency group energy)
+          - Custom 5x7 bitmap font for text rendering
+          - Double-buffered framebuffer (4 frames in DDR)
+
+PROPOSED: Update bar heights in memory, let VDMA handle display
+BUILT:    Full pixel-level software rendering of every frame. The PS
+          writes complete 640x480x24bpp frames to DDR using setPixel()
+          and cache flush (Xil_DCacheFlushRange). This is the opposite
+          of the "only modify bar data" approach in the proposal, but
+          it enables the richer visualization effects listed above.
+
+PROPOSED: Standalone C app with math.h
+BUILT:    Matches this. Uses sqrtf() for magnitude, Xilinx standalone
+          BSP. Code organized into modules:
+          - spectrum/spectrum.c/.h (all custom rendering + FFT processing)
+          - demo.c/.h (hardware init, main loop, DMA management)
+          - Digilent drivers: audio/, dma/, iic/, intc/, userio/,
+            display_ctrl/, dynclk/
+          - xpar_remap.h (SDT compatibility layer for Vitis 2025.2)
+
+PROPOSED: Noise floor handling not mentioned
+BUILT:    Noise floor subtraction (threshold = 10.0) applied to FFT
+          magnitudes before visualization. Without this, quiet bins
+          still show small bars from quantization noise.
+
+----------------------------------------------------------------------
+BUGS AND ISSUES NOT ANTICIPATED IN THE DESIGN DOCUMENT
+----------------------------------------------------------------------
+
+1. GP1 APER_CLK Bug (Vivado 2025.2)
+   Vivado does not enable the GP1 peripheral clock when HDMI IPs are
+   connected via GP1. The ps7_init.tcl file must be manually patched:
+   change 0x01EC044D -> 0x01FC044D (bit 20 of register 0xF800012C)
+   at 3 locations. Must be re-applied after every XSA re-export.
+
+2. DMA TLAST Frame Misalignment
+   The FFT output TLAST and sample_buffer frame boundaries are async.
+   Without tlast_gen.v to sync them, the DMA receives TLAST at wrong
+   positions, causing "DMA INTR ERR" interrupts. This required adding
+   a module that was not in the original design.
+
+3. Memory Port Contention
+   VDMA and audio DMA sharing HP0 caused backpressure stalls where
+   video reads blocked audio writes. Fixed by moving VDMA to HP2.
+   The design document assumed a single memory path would work.
+
+4. I2S FIFO Reset Issue
+   Missing clock domain resets on the I2S FIFO caused L/R channel
+   swapping during streaming. Fixed by restoring proper reset logic.
+
+5. SDT Compatibility (Vitis 2025.2)
+   Vitis 2025.2 uses System Device Tree flow which changed all XPAR_
+   macro names from the legacy format used in Digilent's demo code.
+   Required writing xpar_remap.h to map new names to old names,
+   including the +32 interrupt offset (XSCUGIC_SPI_INT_ID_START).
+
+6. S2MM-Only DMA Interrupts
+   The original Digilent DMA code enabled both MM2S and S2MM interrupts.
+   Since audio loopback doesn't need MM2S completion notification but
+   FFT processing does need S2MM, we disabled MM2S interrupts to
+   prevent spurious ISR calls.
+
+======================================================================
+SUMMARY: PROPOSED vs IMPLEMENTED
+======================================================================
+
+                          DESIGN DOC           FINAL IMPLEMENTATION
+                          ----------           --------------------
+Custom Verilog IPs:       4 proposed           6 built (split wrapper
+                                               into 4, added broadcast,
+                                               skipped custom I2S)
+
+I2S Receiver:             Custom (proposed)    Digilent IP (reused)
+
+FFT Wrapper:              1 monolithic         4 focused modules
+                          module               (sample_buffer,
+                                               real_to_complex,
+                                               fft_config, tlast_gen)
+
+Stream Splitter:          Not proposed         axis_broadcast.v added
+
+Frequency Binning:        Linear, 16 bars      Logarithmic, 24 bars
+                                               across 3 groups
+
+Display:                  Simple bars,         Rich visualization with
+                          minimal decoration   decay, peaks, gradients,
+                                               reflections, labels, glow
+
+Rendering approach:       Bar-height update    Full-frame pixel render
+                          only                 with double buffering
+
+User controls:            SW0/SW1 (polling)    BTN2/BTN3 (interrupts)
+
+Gain multiplier:          2x or 4x            1.5x
+
+Memory ports:             Single (assumed)     Dual HP (HP0 audio,
+                                               HP2 video)
+
+Noise floor:              Not addressed        Threshold subtraction
+
+TLAST alignment:          Not addressed        tlast_gen.v module
+
+Clock domain issues:      FIFO IP proposed     I2S reset fix instead
+
+Vitis compatibility:      Not addressed        xpar_remap.h added

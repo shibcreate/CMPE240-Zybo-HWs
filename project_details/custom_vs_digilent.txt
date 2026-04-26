@@ -1,0 +1,225 @@
+CMPE240 - Custom Code vs Digilent Code
+=======================================
+
+Baselines:
+  phase1   = origin/phase1-audio-baseline  (Digilent Audio DMA Demo)
+  phaselast = origin/phaselast-HDMI-baseline (Digilent HDMI Demo)
+
+Canonical source location: sw_src/src/
+(my_vitis_ws/zybo_project/src/ is a byte-for-byte mirror)
+
+======================================================================
+VERILOG FILES  (Zybo-Z7-10-DMA-hw/hw/hw.srcs/sources_1/)
+======================================================================
+
+ALL 6 VERILOG FILES ARE 100% CUSTOM -- neither baseline has any .v
+files in sources_1/, only .xci (IP cores) and .bd (block designs).
+
+  File                   Author    Purpose
+  --------------------   --------  ----------------------------------
+  stereo_to_mono.v       Amina     Stereo I2S -> mono (L+R)/2
+  sample_buffer.v        Shinika   256-sample BRAM accumulator for FFT
+  real_to_complex.v      Shinika   24-bit real -> 32-bit complex format
+  fft_config.v           Shinika   FFT config channel (0x0155 = fwd, /256)
+  tlast_gen.v            Shinika   Frame alignment for DMA TLAST
+  axis_broadcast.v       Shinika   1-to-2 AXI-Stream splitter
+
+======================================================================
+C/H FILES -- IDENTICAL TO DIGILENT (no changes)
+======================================================================
+
+These files are byte-for-byte identical to the phase1 baseline.
+Pure Digilent code, untouched.
+
+  File                     From Branch
+  -----------------------  -----------
+  iic/iic.c                phase1
+  iic/iic.h                phase1
+  intc/intc.c              phase1
+  intc/intc.h              phase1
+  platform.c               phase1
+  platform.h               phase1
+  platform_config.h        phase1
+  xtime_l.h                phase1
+
+======================================================================
+C/H FILES -- FROM DIGILENT WITH MODIFICATIONS
+======================================================================
+
+These files originated from a Digilent baseline but were modified
+for the project. Changes listed per file.
+
+----------------------------------------------------------------------
+audio/audio.c  (from phase1)  [+2 -2 lines]
+----------------------------------------------------------------------
+  - sDemo_t -> DemoState  (type rename only)
+  - fnSetLineInput(): changed R4 from 0b000010010 to 0b000000010
+    (removed mic boost bit that was incorrectly set for line input)
+
+----------------------------------------------------------------------
+audio/audio.h  (from phase1)  [identical]
+----------------------------------------------------------------------
+  - No changes vs phase1 baseline.
+
+----------------------------------------------------------------------
+userio/userio.c  (from phase1)  [+1 -1 lines]
+----------------------------------------------------------------------
+  - sDemo_t -> DemoState  (type rename only)
+
+----------------------------------------------------------------------
+userio/userio.h  (from phase1)  [identical]
+----------------------------------------------------------------------
+  - No changes vs phase1 baseline.
+
+----------------------------------------------------------------------
+demo.h  (from phase1)  [+15 -91 lines]
+----------------------------------------------------------------------
+  - Replaced Digilent's verbose Doxygen header with simple student
+    header comment
+  - Renamed sDemo_t typedef to DemoState
+  - Removed RETURN_ON_FAILURE macro and other unused macros
+  - Added FFT_SIZE (256), FFT_FRAME_BYTES (1024), FFT_BUF_A,
+    FFT_BUF_B defines for the FFT pipeline
+  - Added STALL_TIMEOUT define for DMA watchdog
+
+----------------------------------------------------------------------
+demo.c  (from phase1)  [+219 -313 lines]
+----------------------------------------------------------------------
+  - Replaced Digilent header with student header comment
+  - Stripped all verbose Digilent comments, added USER CODE markers
+  - Added #include "spectrum/spectrum.h" and display_ctrl includes
+  - Added hardware instances: sVdma, sDispCtrl, dynClk address
+  - Added initDisplay() function (VDMA + VTC + dynclk + framebuffer)
+  - Added fnStartAudio() with I2S FIFO reset and DMA S2MM setup
+  - Added fnStopAudio() with DMA reset and reconfigure
+  - Rewrote main() loop:
+      * initHardware() with 2-second codec warmup + double init
+      * initDisplay() for HDMI output
+      * Polling loop with DMA event -> processFFTFrame() call
+      * Stall watchdog (2M cycle timeout, auto-restart)
+      * BTN3 audio toggle, BTN2 gain toggle
+  - Removed Digilent's original menu-driven serial interface
+
+----------------------------------------------------------------------
+dma/dma.c  (from phase1)  [+16 -75 lines]
+----------------------------------------------------------------------
+  - Replaced Digilent header with student header comment
+  - sDemo_t -> DemoState
+  - Stripped verbose Digilent comments
+  - Added USER CODE markers around custom sections
+  - Added TLAST mismatch error handling in fnS2MMInterruptHandler()
+    (reset DMA on error, still set event flag since data is valid)
+  - Changed fnConfigDma() to enable S2MM interrupts only (disabled
+    MM2S interrupts since audio loopback is handled in PL)
+
+----------------------------------------------------------------------
+dma/dma.h  (from phase1)  [+3 -11 lines]
+----------------------------------------------------------------------
+  - Replaced Digilent header with student header comment
+  - Removed section delimiter comments
+
+----------------------------------------------------------------------
+xpar_remap.h  (from phase1 + phaselast, heavily rewritten)
+----------------------------------------------------------------------
+  phase1 had:  basic SDT remaps for audio (I2S, I2C, DMA, GIC)
+  phaselast had: SDT remaps for HDMI (VDMA, VTC, dynclk, UART)
+
+  Project version combines both and adds:
+  - New student header comment
+  - #include "xscugic.h" for XSCUGIC_SPI_INT_ID_START
+  - Audio remaps: I2S baseaddr, I2C, DMA, GIC device IDs
+  - HDMI remaps: VDMA device ID, VTC out device ID, dynclk baseaddr
+  - Critical interrupt mappings with +32 (XSCUGIC_SPI_INT_ID_START):
+      XPAR_FABRIC_AXI_IIC_0_IIC2INTC_IRPT_INTR
+      XPAR_FABRIC_AXI_DMA_0_S2MM_INTROUT_INTR
+      XPAR_FABRIC_AXI_DMA_0_MM2S_INTROUT_INTR
+      XPAR_FABRIC_AXI_GPIO_0_IP2INTC_IRPT_INTR
+  - 16 lines added vs phase1, completely rewritten vs phaselast
+
+----------------------------------------------------------------------
+display_ctrl/display_ctrl.c  (from phaselast)  [+1 line]
+----------------------------------------------------------------------
+  - Added ClkStop() call before ClkStart() in DisplayInitialize().
+    Without this, re-initializing the display after a reset leaves
+    the dynamic clock in a bad state.
+
+----------------------------------------------------------------------
+display_ctrl/display_ctrl.h  (from phaselast)  [identical]
+----------------------------------------------------------------------
+  - No changes vs phaselast baseline.
+
+----------------------------------------------------------------------
+display_ctrl/vga_modes.h  (from phaselast)  [identical]
+----------------------------------------------------------------------
+  - No changes vs phaselast baseline.
+
+----------------------------------------------------------------------
+dynclk/dynclk.c  (from phaselast)  [identical]
+----------------------------------------------------------------------
+  - No changes vs phaselast baseline.
+
+----------------------------------------------------------------------
+dynclk/dynclk.h  (from phaselast)  [identical]
+----------------------------------------------------------------------
+  - No changes vs phaselast baseline.
+
+----------------------------------------------------------------------
+CMakeLists.txt  (from phase1, modified)  [+8 -9 lines]
+----------------------------------------------------------------------
+  - Added aux_source_directory for dynclk/ subdirectory
+  - Added target_include_directories for: audio/, dma/, iic/,
+    intc/, userio/, display_ctrl/, dynclk/, spectrum/
+  - Adjusted project structure for combined audio + HDMI sources
+
+----------------------------------------------------------------------
+UserConfig.cmake  (from phase1, modified)
+----------------------------------------------------------------------
+  - Added "spectrum/spectrum.c" to USER_COMPILE_SOURCES list
+
+======================================================================
+C/H FILES -- ENTIRELY CUSTOM (not in any baseline)
+======================================================================
+
+  File                       Author    Purpose
+  -------------------------  --------  --------------------------------
+  spectrum/spectrum.c        Abi       FFT magnitude computation,
+                                       log-frequency binning, bar
+                                       rendering with decay/peaks/
+                                       gradients/reflections, 5x7
+                                       font, double-buffered display
+  spectrum/spectrum.h        Abi       Spectrum module interface,
+                                       screen size/stride defines
+
+======================================================================
+FILES FROM PHASELAST NOT CARRIED OVER (removed/not needed)
+======================================================================
+
+These files existed in the phaselast HDMI demo but were not included
+in the project because they were for HDMI input capture, which we
+don't use (we only output to HDMI).
+
+  display_ctrl/xvtc.h       - VTC header (using BSP version instead)
+  display_ctrl/xvtc_hw.h    - VTC hardware defs (using BSP version)
+  timer_ps/timer_ps.c       - PS timer (not needed)
+  timer_ps/timer_ps.h       - PS timer header
+  video_capture/video_capture.c  - HDMI input capture (not needed)
+  video_capture/video_capture.h  - HDMI input capture header
+  video_capture/xvtc.h      - duplicate VTC header
+  video_capture/xvtc_hw.h   - duplicate VTC hardware defs
+  video_demo.c              - Digilent's HDMI demo main (replaced by demo.c)
+  video_demo.h              - Digilent's HDMI demo header
+
+======================================================================
+SUMMARY TABLE
+======================================================================
+
+  Status                        Verilog   C/H Files
+  ----------------------------  -------   ---------
+  100% Custom (new files)       6         2
+  Digilent, heavily modified    --        4  (demo.c, demo.h, dma.c, xpar_remap.h)
+  Digilent, minor modification  --        5  (audio.c, userio.c, dma.h, display_ctrl.c, CMakeLists.txt)
+  Digilent, identical           --        12 (iic/*, intc/*, platform*, xtime_l.h,
+                                              audio.h, userio.h, display_ctrl.h,
+                                              vga_modes.h, dynclk/*)
+  ----------------------------  -------   ---------
+  Total                         6         23

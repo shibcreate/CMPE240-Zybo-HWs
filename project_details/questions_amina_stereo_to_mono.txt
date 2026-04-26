@@ -1,0 +1,149 @@
+CMPE240 - Amina's Section: Stereo-to-Mono Mixer (Verilog)
+================================================================
+
+Q1. Explain the state machine in stereo_to_mono.v. Why are there
+    4 states instead of 2?
+
+A1. The 4 states are:
+    S_WAIT_LEFT (0):  Accept left channel sample from input
+    S_WAIT_RIGHT (1): Accept right channel sample from input
+    S_OUT_LEFT (2):   Output first copy of the mono average
+    S_OUT_RIGHT (3):  Output second copy of the mono average
+
+    There are 4 states instead of 2 because the module must maintain
+    the same data rate as the input. The input is interleaved stereo
+    (L, R, L, R...) at 48 kHz per channel = 96k samples/sec total.
+    The downstream pipeline (sample_buffer, FFT) expects the same
+    throughput. If we only output one mono sample per stereo pair,
+    we'd halve the data rate and break the timing. So we output each
+    mono value TWICE -- once in S_OUT_LEFT, once in S_OUT_RIGHT --
+    to keep the sample rate at 96k samples/sec. The sample_buffer
+    downstream then uses lr_toggle to pick only every other sample.
+
+Q2. How does the sign extension work, and why is it needed?
+
+A2. The input samples are 24-bit signed (two's complement). To add
+    L + R without overflow, we sign-extend both to 25 bits:
+
+      wire signed [24:0] left_ext  = {{2{left_sample[23]}}, left_sample[22:0]};
+      wire signed [24:0] right_ext = {{2{s_axis_tdata[23]}}, s_axis_tdata[22:0]};
+
+    This replicates the sign bit (bit 23) into bits 24 and 23,
+    giving a 25-bit signed value. The sum of two 24-bit signed
+    numbers needs 25 bits to avoid overflow. For example:
+    - Max positive: 0x7FFFFF + 0x7FFFFF = 0x0FFFFFE (25 bits)
+    - Max negative: 0x800000 + 0x800000 = 0x1000000 (25 bits)
+
+    After adding, we take mono_avg = mono_sum[24:1], which is an
+    arithmetic right shift by 1 (divide by 2). This keeps the
+    result within 24-bit range and gives the true average.
+
+Q3. Why does the module use {{2{left_sample[23]}}, left_sample[22:0]}
+    instead of {left_sample[23], left_sample}?
+
+A3. Because the sign extension needs to go from 24 bits to 25 bits,
+    which means adding 1 extra bit. The replication {2{bit23}} gives
+    2 copies of the sign bit, placed at positions [24:23]. Combined
+    with bits [22:0] from the original, that gives 2 + 23 = 25 bits.
+    If we did {left_sample[23], left_sample} that would be 1 + 24 =
+    25 bits, which would also work. The {{2{...}}, [22:0]} form is
+    a common Verilog idiom that explicitly separates the sign
+    extension from the data bits -- both approaches are correct,
+    but the 2-bit replication makes the sign extension intent
+    clearer and avoids accidentally duplicating the sign bit in
+    the data portion.
+
+Q4. What happens to the TLAST signal through the mixer?
+
+A4. TLAST is preserved but delayed. When the right sample arrives
+    in S_WAIT_RIGHT, its TLAST value is saved into saved_tlast.
+    During output, S_OUT_LEFT always sends m_axis_tlast = 0, and
+    S_OUT_RIGHT sends m_axis_tlast = saved_tlast. This means TLAST
+    only appears on the second output of each pair, which matches
+    the convention that TLAST marks the end of a transaction. If
+    the original stereo stream had TLAST on the right channel
+    (marking end of a stereo pair), the mono output preserves that
+    frame boundary on its second output sample.
+
+Q5. How does the AXI-Stream handshaking work in this module?
+
+A5. The module uses standard AXI4-Stream TVALID/TREADY handshaking:
+
+    In S_WAIT_LEFT and S_WAIT_RIGHT:
+      s_axis_tready = 1 (accepting input)
+      m_axis_tvalid = 0 (not producing output)
+
+    In S_OUT_LEFT and S_OUT_RIGHT:
+      s_axis_tready = 0 (back-pressuring input, stop accepting)
+      m_axis_tvalid = 1 (output data valid)
+
+    A transfer happens only when TVALID && TREADY are both high.
+    The module never accepts new input while it's outputting, and
+    never claims to have output while it's waiting for input. This
+    prevents data loss and ensures every stereo pair produces
+    exactly two mono outputs.
+
+Q6. What is the output data format? Why are the upper 8 bits zero?
+
+A6. The output is: m_axis_tdata = {8'd0, mono_val} where mono_val
+    is the 24-bit averaged mono sample. The upper 8 bits are zeroed
+    because the AXI-Stream bus is 32 bits wide but the audio is only
+    24-bit resolution. Downstream modules (real_to_complex.v) expect
+    the audio data in the lower 24 bits. The 8 zero bits are padding
+    to fill the 32-bit bus width.
+
+Q7. If one channel has silence (all zeros) and the other has a loud
+    signal, what does the mono output look like?
+
+A7. The mono output would be exactly half the amplitude of the loud
+    channel. For example, if left = 0x400000 (large positive) and
+    right = 0x000000 (silence):
+      sum = 0x0400000 + 0x0000000 = 0x0400000
+      avg = sum >> 1 = 0x200000
+    So the mono output is half of the left channel's value. This
+    is the correct behavior for a (L+R)/2 mixer -- it preserves
+    energy proportionally. The 3 dB attenuation from halving is
+    compensated downstream by the per-group gain normalization in
+    spectrum.c (bass 0.4x, vocal 1.0x, high 1.8x).
+
+Q8. Could you implement this as a combinational module instead of
+    a state machine? What would be the tradeoff?
+
+A8. Not easily, because the input is time-multiplexed (interleaved
+    L-R-L-R on a single stream). You need to remember the left
+    sample while waiting for the right sample, which requires
+    state. A combinational approach would need two separate input
+    streams (one for L, one for R) arriving simultaneously, which
+    would require a different I2S output format.
+
+    Alternatively, you could use a 2-deep FIFO to buffer the left
+    sample and compute the average when right arrives, but that's
+    essentially what the state machine does with the left_sample
+    register. The FSM approach is actually the simplest solution
+    for an interleaved single-stream input.
+
+Q9. What happens if the downstream module is not ready (m_axis_tready
+    is low) when the mixer tries to output?
+
+A9. The module stays in its current output state (S_OUT_LEFT or
+    S_OUT_RIGHT) and keeps asserting m_axis_tvalid = 1 with the
+    same data until the downstream asserts tready. Meanwhile,
+    s_axis_tready remains 0, so the upstream I2S IP also stalls.
+    This is standard AXI-Stream back-pressure -- the entire pipeline
+    pauses gracefully. No data is lost because the handshake only
+    completes when both TVALID and TREADY are high.
+
+Q10. Why does this module output mono on both L and R channels
+     instead of just one channel?
+
+A10. The downstream sample_buffer.v uses lr_toggle to skip every
+     other sample (it only keeps the "left" samples). If we only
+     output mono on the left slot and left the right slot as silence
+     or garbage, sample_buffer would still work. But outputting
+     identical mono on both channels has two benefits:
+     1. The audio loopback path (through axis_broadcast's second
+        output) sends audio to the headphone DAC. Having mono on
+        both L and R means the user hears the mixed audio in both
+        ears, which is the expected behavior.
+     2. It makes the module's output well-defined for any downstream
+        consumer, regardless of which channel they sample.

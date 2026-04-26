@@ -1,0 +1,253 @@
+CMPE240 - Jordan's Section: HDMI Display Pipeline
+================================================================
+
+Q1. Walk through the HDMI display pipeline from framebuffer to
+    monitor. What IP cores are involved?
+
+A1. The pipeline is:
+
+    DDR Framebuffer -> VDMA (HP2) -> AXI4-Stream to Video Out
+                                         |
+    Dynamic Clock (axi_dynclk) -----> VTC (timing signals)
+                                         |
+                                     rgb2dvi -> HDMI connector
+
+    1. VDMA (AXI Video DMA): continuously reads framebuffer data
+       from DDR through the HP2 memory port at 100 MHz. Outputs
+       pixel data as an AXI4-Stream.
+    2. AXI4-Stream to Video Out: converts the AXI-Stream into
+       timed video signals (pixel data + data enable). Has an
+       async FIFO because AXI runs at 100 MHz but video at ~25 MHz.
+    3. VTC (Video Timing Controller): generates HSYNC, VSYNC, and
+       data enable signals for 640x480 @ 60 Hz. Configured with
+       horizontal/vertical front porch, sync width, and back porch.
+    4. Dynamic Clock (axi_dynclk): generates the pixel clock at
+       ~25.175 MHz (standard VGA timing). Uses a PLL to synthesize
+       the exact frequency from the system clock.
+    5. rgb2dvi: converts 24-bit RGB parallel video + sync signals
+       into TMDS differential signaling (DVI/HDMI format). Uses a
+       125 MHz serializer clock (5x pixel clock).
+
+Q2. Why was VDMA moved from HP0 to HP2? What problem did this solve?
+
+A2. Originally both the audio DMA (S2MM for FFT data) and VDMA
+    (for framebuffer reads) shared the HP0 memory port. HP ports
+    are the high-performance AXI ports connecting the PL to the
+    DDR controller.
+
+    The problem: VDMA reads framebuffer data continuously at 60 Hz
+    (640*480*3*60 = ~55 MB/s). Audio DMA writes FFT frames at
+    ~46 KB/s. When both compete for HP0, the VDMA's large burst
+    reads can block the audio DMA's writes, causing backpressure
+    that stalls the entire FFT pipeline. The audio DMA would miss
+    its completion window, trigger timeout errors, and the stall
+    watchdog would restart the pipeline.
+
+    Fix: Move VDMA to HP2, keep audio DMA on HP0. Each gets
+    dedicated memory port bandwidth. The Zynq-7010 has 4 HP ports
+    (HP0-HP3), each with independent access to the DDR controller.
+    Separating them eliminates contention entirely.
+
+Q3. What are the VTC timing parameters for 640x480 @ 60 Hz?
+
+A3. Standard VGA timing (industry standard from VESA):
+    Horizontal:
+      Active pixels:  640
+      Front porch:    16 pixels (after active, before sync)
+      Sync width:     96 pixels
+      Back porch:     48 pixels (after sync, before next active)
+      Total:          800 pixels per line
+      Sync polarity:  Negative (active low)
+
+    Vertical:
+      Active lines:   480
+      Front porch:    10 lines
+      Sync width:     2 lines
+      Back porch:     33 lines
+      Total:          525 lines per frame
+      Sync polarity:  Negative (active low)
+
+    Pixel clock = 800 * 525 * 60 = 25,200,000 Hz (25.2 MHz)
+    Standard spec says 25.175 MHz; the dynamic clock gets close
+    enough for monitors to lock.
+
+Q4. What does the dynamic clock (axi_dynclk) do, and why can't
+    you just use a fixed clock?
+
+A4. axi_dynclk is a PLL-based clock generator that can produce
+    arbitrary frequencies by programming divider and multiplier
+    ratios. The PS writes configuration registers to set the target
+    frequency.
+
+    A fixed clock won't work because different video modes need
+    different pixel clocks:
+      640x480  @ 60 Hz = ~25.175 MHz
+      800x600  @ 60 Hz = ~40.000 MHz
+      1280x720 @ 60 Hz = ~74.250 MHz
+
+    Even though we only use 640x480, the dynamic clock allows the
+    display_ctrl driver to support any mode by calling:
+      ClkFindParams(freq, &clkMode) - calculate PLL parameters
+      ClkFindReg(&clkReg, &clkMode) - convert to register values
+      ClkStop() / ClkStart()        - reprogram the clock
+
+    The driver computes the closest achievable frequency and stores
+    the actual frequency in dispPtr->pxlFreq.
+
+Q5. How does DisplayStart() initialize the full HDMI chain?
+
+A5. DisplayStart() performs 3 main initializations in order:
+
+    1. Clock setup:
+       - Calculate PLL dividers for target pixel frequency
+       - Stop existing clock, program new parameters, restart
+       - Must be done first because VTC and video out need this clock
+
+    2. VTC configuration:
+       - Set horizontal timing: active, front porch, sync, back porch
+       - Set vertical timing: active, front porch, sync, back porch
+       - Set sync polarities (negative for 640x480)
+       - Enable the timing generator (XVtc_EnableGenerator)
+
+    3. VDMA start:
+       - Configure read channel: stride=1920, EnableCircularBuf=1,
+         FrameCounter=4 (cycle through 4 framebuffers)
+       - Set framebuffer start addresses for all 4 frames
+       - Start DMA read channel (XAxiVdma_DmaStart, XAXIVDMA_READ)
+
+    Order matters: clock must be running before VTC starts generating
+    timing, and VTC must be generating timing before VDMA starts
+    sending pixels. If VDMA starts before VTC, pixels arrive but
+    there's no sync -- the monitor shows garbage or nothing.
+
+Q6. What is the clock domain crossing issue, and how is it handled?
+
+A6. The system has two clock domains:
+      AXI domain: 100 MHz (system clock, where DMA and PS operate)
+      Video domain: ~25 MHz (pixel clock, where VTC and rgb2dvi operate)
+
+    VDMA reads framebuffer at 100 MHz and produces AXI4-Stream data
+    at 100 MHz. But the video output (VTC, rgb2dvi) consumes pixels
+    at 25 MHz. Data crosses from fast domain to slow domain.
+
+    The AXI4-Stream to Video Out IP handles this. It has an internal
+    asynchronous FIFO (configured with C_HAS_ASYNC_CLK=1) that:
+    - Writes data at 100 MHz (AXI clock) from VDMA
+    - Reads data at 25 MHz (pixel clock) for video output
+    - Uses gray-code pointers for safe clock domain crossing
+    - Buffers enough data to handle the rate difference
+
+    Without this async FIFO, data would be corrupted at the clock
+    boundary -- bits sampled during transitions would be metastable.
+
+Q7. How does framebuffer swapping work, and why is cache flushing
+    required?
+
+A7. The system uses 4 framebuffers in DDR. The PS writes to one
+    (back buffer) while VDMA reads another (front buffer).
+
+    After rendering, the PS calls:
+      Xil_DCacheFlushRange((INTPTR)frameBuf[drawFrame], FRAME_BUF_SIZE);
+      DisplayChangeFrame(&sDispCtrl, drawFrame);
+
+    Cache flush is required because:
+    - ARM Cortex-A9 has L1 (32KB) and L2 (256KB) data caches
+    - PS writes go to cache first, not directly to DDR
+    - VDMA reads directly from DDR through HP2 (bypasses cache)
+    - Without flush, VDMA reads stale data from DDR
+
+    DisplayChangeFrame() updates the VDMA's base address register
+    to point to the new frame. The VDMA switches at the next frame
+    boundary (after current frame completes), preventing tearing.
+
+Q8. What does rgb2dvi do, and what clock does it need?
+
+A8. rgb2dvi converts parallel 24-bit RGB video data into TMDS
+    (Transition-Minimized Differential Signaling), which is the
+    physical layer encoding for DVI and HDMI.
+
+    It takes:
+    - 24-bit RGB pixel data (8 bits each R, G, B)
+    - HSYNC, VSYNC signals from VTC
+    - Pixel clock (~25 MHz)
+
+    It produces:
+    - 4 differential TMDS pairs (R, G, B, Clock) on HDMI pins
+    - Each color channel is 10-bit encoded (8b10b-like TMDS encoding)
+
+    It needs TWO clocks:
+    - Pixel clock: ~25 MHz (same as VTC, for sampling input data)
+    - Serializer clock: 125 MHz (5x pixel clock, for 10-bit serial output)
+      Each pixel clock period transmits 10 serial bits per channel,
+      so the serializer runs at 25 MHz * 5 = 125 MHz (the 10 bits
+      are sent as 2 groups of 5 using DDR serializers).
+
+    The 125 MHz clock is typically generated by the Clocking Wizard
+    or dynamic clock IP.
+
+Q9. What is the GP1 APER_CLK bug, and how does it affect the HDMI
+    pipeline?
+
+A9. The HDMI IPs (VDMA control registers, VTC, dynclk) are connected
+    to the PS through the GP1 AXI port at address range 0x83000000+.
+    GP1 has a peripheral clock gate (APER_CLK) at register 0xF800012C
+    that must have bit 20 set to enable the clock.
+
+    In Vivado 2025.2, the tool generates ps7_init.tcl with the value
+    0x01EC044D for this register, which has bit 20 = 0 (GP1 clock
+    disabled). The correct value is 0x01FC044D (bit 20 = 1).
+
+    Without this fix:
+    - GP1 port has no clock, so all AXI transactions to HDMI IPs
+      hang or return garbage
+    - VDMA config reads/writes fail silently
+    - VTC never gets configured
+    - Dynamic clock never starts
+    - HDMI output is completely dead (no signal to monitor)
+    - The PS may hang on the first VDMA register access
+
+    Fix: manually patch 3 occurrences of 0x01EC044D to 0x01FC044D
+    in my_vitis/application/_ide/psinit/ps7_init.tcl. This must be
+    redone after every XSA re-export because Vivado regenerates the
+    file with the wrong value.
+
+Q10. If the monitor shows no signal, what would you check first?
+     Walk through the debug process.
+
+A10. Debug checklist in order:
+
+     1. GP1 APER_CLK patch: Check ps7_init.tcl has 0x01FC044D (not
+        0x01EC044D). This is the #1 cause of blank HDMI.
+
+     2. Bitstream loaded: Verify the bitstream was programmed
+        (check if PL LEDs or other indicators work). HDMI IPs exist
+        only in the bitstream.
+
+     3. Dynamic clock running: The pixel clock must be active. If
+        ClkStart() fails, VTC has no clock and produces no sync.
+        Check that the dynclk base address in xpar_remap.h is correct.
+
+     4. VTC enabled: XVtc_EnableGenerator() must have been called.
+        Without it, no HSYNC/VSYNC signals are produced and the
+        monitor can't lock.
+
+     5. VDMA running: Check that XAxiVdma_DmaStart() was called for
+        the read channel. If VDMA isn't reading, no pixel data
+        reaches the video output.
+
+     6. Framebuffer valid: The framebuffer pointers must point to
+        valid DDR addresses with actual pixel data. If the memory is
+        uninitialized, the display shows noise. initFramebuffer()
+        must have been called.
+
+     7. Cache flush: If the framebuffer looks corrupted or shows
+        stale data, check that Xil_DCacheFlushRange() is being
+        called before DisplayChangeFrame().
+
+     8. HDMI cable and monitor: The monitor must support 640x480
+        (virtually all do). Try a different cable or monitor. Some
+        monitors have input source selection that needs to be set
+        to the correct HDMI port.
+
+     9. Memory port: Verify VDMA is on HP2 (not HP0 which has audio
+        DMA contention). Check the block design connections.

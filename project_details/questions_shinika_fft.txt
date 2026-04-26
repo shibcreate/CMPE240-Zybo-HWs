@@ -1,0 +1,226 @@
+CMPE240 - Shinika's Section: FFT Pipeline (Verilog IP Cores)
+================================================================
+
+Q1. Walk through the full hardware pipeline from mono audio to DMA.
+    What does each custom module do?
+
+A1. The pipeline after stereo_to_mono is:
+
+    axis_broadcast -> sample_buffer -> real_to_complex -> FFT IP
+                                                           |
+                                                      fft_config
+                                                           |
+                                                      tlast_gen -> DMA (HP0)
+
+    1. axis_broadcast: splits the mono stream into two copies --
+       one goes to sample_buffer for FFT, one goes to audio loopback
+    2. sample_buffer: accumulates 256 mono samples in BRAM, then
+       bursts them out as a single frame
+    3. real_to_complex: converts 24-bit real audio into 32-bit
+       complex format {16'b imag=0, 16'b real} for the FFT IP
+    4. fft_config: drives the FFT config channel with 0x0155
+       (forward transform, 1/256 scaling)
+    5. Xilinx FFT IP: performs 256-point pipelined streaming FFT
+    6. tlast_gen: waits for FFT's TLAST to sync frame boundaries,
+       then generates clean TLAST every 256 samples for DMA
+
+Q2. Explain the sample_buffer state machine. Why does it use
+    lr_toggle to skip samples?
+
+A2. sample_buffer has 2 states:
+
+    S_FILL: accepts input, stores samples in BRAM
+      - lr_toggle alternates 0/1 on each valid input sample
+      - Only stores when lr_toggle == 0 (left channel position)
+      - Skips when lr_toggle == 1 (right channel position)
+      - When wr_count reaches 255 (256 samples stored), transitions
+        to S_DRAIN and pre-loads first output
+
+    S_DRAIN: outputs 256 samples from BRAM, back-pressures input
+      - Reads frame_buf[rd_count] sequentially
+      - Asserts TLAST on the last sample (rd_count == 255)
+      - Returns to S_FILL when all 256 are output
+
+    lr_toggle is needed because stereo_to_mono outputs each mono
+    value twice (once for L slot, once for R slot) to maintain the
+    stereo data rate. We only need 256 unique samples for the FFT,
+    not 256 duplicated pairs. So lr_toggle decimates by 2, keeping
+    every other sample.
+
+Q3. What does 0x0155 mean in fft_config.v?
+
+A3. 0x0155 in binary is 0000_0001_0101_0101. The Xilinx FFT IP
+    config channel format is:
+
+    Bit [0] = 1: Forward FFT (0 would be inverse FFT)
+    Bits [8:1] = 0xAA = 10_10_10_10: Scaling schedule
+
+    For a 256-point FFT, there are 4 butterfly stage-pairs (log2(256)/2 = 4).
+    Each 2-bit field in the scaling schedule sets the division factor
+    for that stage pair:
+      00 = no scaling
+      01 = divide by 2
+      10 = divide by 4
+      11 = divide by 8
+
+    Our schedule is 10_10_10_10 = divide by 4 at each stage pair.
+    Total scaling = 4 * 4 * 4 * 4 = 256, so output = input/256.
+    This matches the FFT normalization factor (1/N for N=256) and
+    prevents fixed-point overflow in the butterfly computations.
+
+Q4. Why is real_to_complex purely combinational? Could it introduce
+    timing issues?
+
+A4. real_to_complex is combinational because it's just wire
+    assignments:
+      m_axis_tdata = {16'd0, s_axis_tdata[23:8]}
+    No state, no clock, no registers. It takes the top 16 bits of
+    the 24-bit audio (bits [23:8]) as the real part and sets the
+    imaginary part to zero.
+
+    Timing issues are unlikely because:
+    - The logic is trivial (just bit selection and concatenation)
+    - Propagation delay is essentially zero (just routing)
+    - All AXI-Stream handshake signals pass straight through
+    The synthesis tool will place these wires on the routing fabric
+    with negligible delay. If timing were tight, you could add a
+    pipeline register, but at 100 MHz system clock with such simple
+    logic, there's no need.
+
+Q5. What problem does tlast_gen solve? What happens without it?
+
+A5. The AXI DMA in S2MM mode expects TLAST to mark the end of each
+    frame. It uses TLAST to know when a complete transfer is done
+    and fires the completion interrupt. If TLAST arrives at the wrong
+    sample count, the DMA enters an error state (DMAIntErr flag set)
+    and halts.
+
+    Without tlast_gen, the FFT IP generates its own TLAST based on
+    its internal pipeline, which may not be aligned with the 256-
+    sample frame boundaries that the DMA expects. The FFT can also
+    produce TLAST at positions shifted by the pipeline latency.
+
+    tlast_gen fixes this by:
+    1. Discarding all data until it sees the first TLAST from the
+       FFT (synchronization phase, synced=0)
+    2. After sync, counting samples internally (0 to 255)
+    3. Generating a new TLAST exactly every 256 samples
+    4. Ignoring the FFT's original TLAST markers
+
+    This guarantees the DMA always sees perfectly aligned frames.
+
+Q6. Explain the axis_broadcast handshaking. What prevents deadlock?
+
+A6. axis_broadcast uses per-output "done" flags:
+
+    m0_done and m1_done track whether each output has accepted the
+    current sample. The input can only advance when both outputs
+    have accepted (both_done signal).
+
+    The logic for both_done is:
+      both_done = (m0_done | (m0_active & m0_axis_tready))
+                & (m1_done | (m1_active & m1_axis_tready));
+
+    This means: each output counts as "done" if it already accepted
+    (m0_done=1) OR if it's currently accepting (active & tready).
+
+    Deadlock is prevented because:
+    - Each output can accept independently at different times
+    - Once one output accepts, its done flag is set and it stops
+      seeing tvalid (m0_active goes low), so it's free to do other
+      work while the other output catches up
+    - The input only advances after BOTH have accepted
+    - On the next cycle after both_done, both done flags reset
+
+    The worst case is one slow consumer: the fast output accepts
+    immediately (done=1), then the module waits for the slow
+    output. No data is lost, no deadlock occurs.
+
+Q7. Why does sample_buffer use (* ram_style = "block" *) on the
+    frame_buf register array?
+
+A7. The pragma (* ram_style = "block" *) tells the Vivado synthesizer
+    to implement the 256x32 register array using dedicated Block RAM
+    (BRAM) tiles on the FPGA instead of distributed LUT RAM.
+
+    BRAM advantages for this use case:
+    - 256 x 32 = 8 Kbit fits in a single 18Kb BRAM tile
+    - BRAM has dedicated read/write ports with deterministic timing
+    - Using BRAM saves LUT resources for other logic
+    - BRAM supports the sequential fill-then-drain access pattern
+
+    Without the pragma, the tool might infer distributed RAM from
+    LUTs, which would consume 256 * 32 = 8192 LUT bits -- a
+    significant chunk of the Zybo Z7-10's limited LUT resources.
+    The Zynq-7010 has 60 BRAM tiles but only 17,600 LUTs, so using
+    BRAM is much more resource-efficient.
+
+Q8. In tlast_gen, why does the unsynced state discard data with
+    tready=1 but tvalid=0 to the output?
+
+A8. When synced=0:
+      s_axis_tready = 1  (accept and discard input)
+      m_axis_tvalid = 0  (nothing goes to DMA)
+
+    The module is "eating" FFT output samples without forwarding
+    them. This is necessary because when the system first starts,
+    the FFT pipeline may be mid-frame -- the DMA would see a partial
+    frame and immediately error out.
+
+    By discarding until we see a TLAST (which marks a frame boundary
+    from the FFT), we guarantee that the first sample we actually
+    send to the DMA is the start of a complete frame. After that,
+    our internal counter takes over and generates TLAST every 256
+    samples, keeping the DMA perfectly aligned.
+
+    Setting tready=1 while discarding also prevents the upstream
+    FFT from stalling. If we held tready=0, the FFT pipeline would
+    back-pressure all the way to the sample_buffer and eventually
+    to the I2S input, causing audio glitches.
+
+Q9. How does the FFT pipeline handle back-pressure if the DMA is
+    busy?
+
+A9. Back-pressure propagates backward through the AXI-Stream chain:
+
+    1. DMA holds m_axis_tready low (busy writing to DDR)
+    2. tlast_gen: s_axis_tready = m_axis_tready = 0, stalls FFT output
+    3. FFT IP: its output TREADY goes low, internal pipeline stalls
+    4. real_to_complex: passthrough, stalls too
+    5. sample_buffer: in S_DRAIN, waits for tready before outputting
+       next sample. If in S_FILL, it continues filling from input.
+    6. axis_broadcast: if the FFT path (m0) stalls, the broadcast
+       keeps m0_done=0 and waits. The audio loopback path (m1) may
+       still accept, setting m1_done=1, but the input won't advance
+       until m0 also accepts.
+    7. stereo_to_mono: sees s_axis_tready=0, stays in output state
+
+    This is the beauty of AXI4-Stream: back-pressure is automatic
+    and lossless. No data is dropped, the pipeline just pauses.
+
+Q10. What would happen if you changed the FFT from 256-point to
+     512-point? What modules need to change?
+
+A10. Several changes would be needed:
+
+     Hardware:
+     - sample_buffer.v: change FRAME_SIZE parameter from 256 to 512,
+       increase BRAM to 512x32 (still fits in one 36Kb BRAM tile)
+     - tlast_gen.v: change FRAME_SIZE parameter to 512
+     - fft_config.v: update scaling schedule. 512-point has 4.5
+       stage pairs (log2(512)=9 stages). The config word would need
+       5 scaling fields instead of 4. New value would be something
+       like 0x02AA or 0x0555 depending on desired scaling.
+     - Xilinx FFT IP: reconfigure in Vivado for 512-point transform
+     - DMA transfer size: FFT_FRAME_BYTES = 512 * 4 = 2048 bytes
+
+     Software:
+     - demo.h: FFT_SIZE = 512, FFT_FRAME_BYTES = 2048
+     - spectrum.h: USABLE_BINS = 256 (Nyquist limit for 512-point)
+     - spectrum.c: update initBinMapping() bin ranges to cover 256
+       bins instead of 128. Frequency resolution improves to
+       48000/512 = 93.75 Hz/bin (half of current 187.5 Hz/bin).
+
+     The frame collection time doubles to 512/48000 = 10.67 ms,
+     so the max update rate drops from ~187 Hz to ~93 Hz theoretical,
+     and the visible FPS would decrease slightly.

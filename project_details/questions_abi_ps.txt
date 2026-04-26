@@ -1,0 +1,216 @@
+CMPE240 - Abi's Section: Processing System (PS) Software
+================================================================
+
+Q1. How does the PS extract frequency magnitudes from the raw FFT
+    data? Walk through the math.
+
+A1. The FFT IP outputs 256 complex samples, each packed into a 32-bit
+    word: lower 16 bits = real part, upper 16 bits = imaginary part.
+
+    In processFFTFrame(), for each bin i (1 to 127):
+      int16_t re = (int16_t)(pBuf[i] & 0xFFFF);         // Extract real
+      int16_t im = (int16_t)((pBuf[i] >> 16) & 0xFFFF); // Extract imaginary
+      float mag = sqrtf((float)(re*re) + (float)(im*im));
+
+    The cast to int16_t gives signed interpretation (two's complement).
+    The magnitude is the Euclidean distance: |X[k]| = sqrt(Re^2 + Im^2).
+    We use sqrtf() which runs on the ARM Cortex-A9 hardware FPU, so
+    computing 128 square roots per frame is fast (well under 1 ms).
+
+    We skip bin 0 (DC component, no useful frequency info) and only
+    use bins 1-127 (Nyquist limit: 128 unique bins from 256-point FFT).
+    After computing magnitude, we subtract the noise floor:
+      magnitudes[i] = (mag > 10.0f) ? mag - 10.0f : 0.0f;
+
+Q2. Explain the logarithmic frequency binning. Why not use linear?
+
+A2. Linear binning divides 128 FFT bins evenly across display bars
+    (e.g., 128/24 = ~5 bins per bar). This is perceptually wrong
+    because human hearing is logarithmic -- we perceive pitch
+    changes as ratios, not absolute Hz differences. Middle C to the
+    next octave is 262-524 Hz (262 Hz span), but one octave higher
+    is 524-1048 Hz (524 Hz span). Linear binning would give bass
+    frequencies only 1-2 bars but waste 10+ bars on inaudible
+    ultrasonic frequencies.
+
+    Our log binning uses 3 groups with exponential interpolation:
+      BASS:  5 bars covering bins 1-4   (~187-750 Hz)
+      VOCAL: 10 bars covering bins 4-35  (~750 Hz-6.6 kHz)
+      HIGH:  9 bars covering bins 35-80  (~6.6-15 kHz)
+
+    Within each group, bin boundaries are computed logarithmically:
+      t = i / numBars;  // 0 to 1 across group
+      binStart[b] = exp(log(lo) + t * (log(hi) - log(lo)));
+
+    This gives more bars to frequency ranges where human hearing
+    is most sensitive (1-5 kHz vocal range) and fewer to extremes.
+
+Q3. What are the per-group gain factors, and why are they different?
+
+A3. The three groups have different gain normalization:
+      Bass:  0.4x (attenuated)
+      Vocal: 1.0x (reference, no adjustment)
+      High:  1.8x (boosted)
+
+    These compensate for the natural frequency distribution of audio:
+    - Bass frequencies naturally dominate in most music (kick drums,
+      bass guitar). Without attenuation, bass bars would always be
+      at maximum while everything else looks flat.
+    - Vocal/mid frequencies are the reference range.
+    - High frequencies have much lower energy in typical audio and
+      also lose magnitude through the FFT scaling. The 1.8x boost
+      makes cymbal hits and hi-hats visible on the display.
+
+    The user gain boost (BTN2) adds an additional 1.5x multiplier
+    on top of these group gains, for quiet audio sources.
+
+Q4. How does the smooth decay work? Why not just show raw values?
+
+A4. Raw FFT magnitudes change dramatically frame-to-frame -- a snare
+    hit might go from 0 to max to 0 in three frames (about 65 ms).
+    This makes the bars flicker too fast to read.
+
+    Smooth decay works like this:
+      if (newHeight >= currentHeight)
+          barHeights[b] = newHeight;        // Instant rise
+      else
+          barHeights[b] = currentHeight * 0.7;  // Gradual fall
+
+    Bars rise instantly to capture transients (you see the hit) but
+    fall at 70% per frame (about 30% drop each frame). This creates
+    a natural "gravity" effect where bars smoothly descend. After
+    10 frames of silence, a bar at height 310 drops to:
+    310 * 0.7^10 = 310 * 0.028 = ~9 pixels (essentially gone).
+
+    The peak-hold dots add another layer: white dots mark the max
+    height, hold for 12 frames (~260 ms), then fall at 4 pixels
+    per frame. This lets you see where the peak was even as the
+    bar decays.
+
+Q5. Explain the double-buffering scheme. Why 4 framebuffers?
+
+A5. The system has 4 framebuffers in DDR (640x480x3 = 921,600 bytes
+    each, about 3.5 MB total). The VDMA continuously reads one
+    buffer to feed the HDMI output at 60 Hz, while the PS renders
+    to a different buffer.
+
+    The flow is:
+    1. VDMA reads frame N (currently displayed)
+    2. PS renders spectrum bars into frame N+1 (back buffer)
+    3. PS calls Xil_DCacheFlushRange() to flush cache to DDR
+    4. PS calls DisplayChangeFrame() to tell VDMA to switch to N+1
+    5. Next render goes to frame N+2, etc., wrapping at 4
+
+    Why 4 instead of 2? With only 2, there's a risk of tearing --
+    the PS might start writing to the buffer that VDMA is still
+    reading. With 4, there's always at least one fully rendered
+    buffer ready, one being displayed, and one being written. The
+    VDMA's circular buffer mode cycles through them automatically.
+
+    Xil_DCacheFlushRange() is CRITICAL. The ARM Cortex-A9 has L1
+    and L2 caches. Without flushing, the PS writes stay in cache
+    and the VDMA (which reads directly from DDR via HP2) sees stale
+    data, causing the display to show old or corrupted frames.
+
+Q6. What is the pixel format, and why is it BGR not RGB?
+
+A6. Each pixel is 3 bytes in BGR order:
+      byte offset +0 = Blue
+      byte offset +1 = Green
+      byte offset +2 = Red
+
+    The setPixel function writes:
+      fb[y * STRIDE + x * 3 + 0] = b;  // Blue
+      fb[y * STRIDE + x * 3 + 1] = g;  // Green
+      fb[y * STRIDE + x * 3 + 2] = r;  // Red
+
+    This BGR ordering matches what the AXI4-Stream to Video Out IP
+    and rgb2dvi converter expect. It's a convention from the DVI/HDMI
+    specification and the Digilent IP cores. If you accidentally
+    write RGB, the display shows colors with red and blue swapped.
+    STRIDE = 640 * 3 = 1920 bytes per row.
+
+Q7. How does the DMA stall watchdog work in demo.c?
+
+A7. The main loop has a stallCount counter that increments every
+    iteration. When a DMA S2MM event fires (FFT frame complete),
+    stallCount resets to 0. If stallCount exceeds STALL_TIMEOUT
+    (2,000,000 iterations, roughly 2 seconds at the loop rate),
+    the system assumes the DMA pipeline is deadlocked:
+
+      stallCount++;
+      if (stallCount > STALL_TIMEOUT) {
+          fnStopAudio(&sAxiDma);   // Reset DMA, clear I2S
+          fnStartAudio(&sAxiDma, &rxBufIdx);  // Restart pipeline
+          stallCount = 0;
+      }
+
+    Common stall causes: DMA error from TLAST mismatch (before
+    tlast_gen was added), HP0/HP2 contention, or codec losing clock
+    lock. The watchdog provides automatic recovery without user
+    intervention.
+
+Q8. Explain the interrupt flow from DMA completion to rendering.
+
+A8. The flow is:
+    1. DMA S2MM finishes writing 256 complex samples to FFT_BUF_A
+       in DDR (1024 bytes = 256 * 4)
+    2. DMA hardware asserts IRQ line to the GIC (Generic Interrupt
+       Controller) on the PS
+    3. GIC routes it to fnS2MMInterruptHandler() via the IVT
+    4. Handler reads IrqStatus, acknowledges the interrupt
+    5. If IOC (I/O Complete) bit set: Demo.fDmaS2MMEvent = 1
+    6. If Error bit set: Demo.fDmaError = 1, reset DMA
+    7. Handler returns, main loop sees fDmaS2MMEvent == 1
+    8. Main loop calls processFFTFrame((u32*)FFT_BUF_A, gainBoost,
+       &sDispCtrl)
+    9. processFFTFrame computes magnitudes, updates bar heights,
+       renders to back buffer, flushes cache, swaps frame
+    10. Main loop clears fDmaS2MMEvent = 0, resets stallCount
+
+    The interrupt number requires the +32 offset from xpar_remap.h
+    (XSCUGIC_SPI_INT_ID_START) because Vitis 2025.2 SDT gives
+    fabric interrupt IDs as SPI offsets (0-based), but the GIC
+    uses SPI IDs starting at 32.
+
+Q9. What is xpar_remap.h and why was it needed?
+
+A9. Vitis 2025.2 uses the System Device Tree (SDT) flow which
+    generates different XPAR_ macro names than the legacy Xilinx
+    SDK. The Digilent demo code was written for the old naming
+    convention. For example:
+      Old: XPAR_AXI_IIC_0_BASEADDR
+      New: XPAR_XIIC_0_BASEADDR
+
+    xpar_remap.h creates #define mappings from old names to new:
+      #define XPAR_IIC_0_BASEADDR  XPAR_XIIC_0_BASEADDR
+
+    The most critical mapping is for interrupts:
+      #define XPAR_FABRIC_AXI_DMA_0_S2MM_INTROUT_INTR \
+          (XPAR_FABRIC_AXI_DMA_0_INTR_1 + XSCUGIC_SPI_INT_ID_START)
+
+    Without the +32 offset, fabric interrupts (from DMA, I2C, GPIO)
+    would be routed to wrong GIC IDs and never fire. The system
+    would appear to work but never process any FFT data because the
+    DMA completion interrupt would be lost.
+
+Q10. How does the PS handle simultaneous audio loopback and FFT
+     processing?
+
+A10. The PS doesn't directly handle audio loopback -- that's done
+     entirely in hardware. The axis_broadcast module splits the mono
+     stream: one copy goes to the FFT pipeline (-> DMA -> DDR -> PS),
+     the other goes directly to the I2S transmitter for headphone
+     output. The PS never touches the loopback path.
+
+     For FFT processing, the PS is interrupt-driven:
+     - DMA S2MM writes FFT results to DDR (no PS involvement)
+     - DMA fires interrupt when done
+     - PS processes the data and renders display
+
+     The I2S stream runs continuously at 48 kHz in the PL regardless
+     of what the PS is doing. The PS could take 100 ms to render a
+     frame and the audio would still play without glitches because
+     the loopback is pure hardware. This is the key advantage of
+     the HW/SW partitioning: timing-critical audio stays in PL,
+     compute-heavy visualization runs on PS.

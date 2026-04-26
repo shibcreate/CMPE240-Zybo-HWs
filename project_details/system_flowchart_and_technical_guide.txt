@@ -1,0 +1,976 @@
+CMPE240 Spring 2026 - System Flowchart & Technical Guide
+=========================================================
+Real-Time Mono Audio Spectrum Analyzer with HDMI Visualization
+Zybo Z7-10 (Zynq-7010: ARM Cortex-A9 + Artix-7 FPGA)
+
+Team: Abirami, Amina, Hemanth, Shinika, Jordan
+
+PURPOSE: Presentation-ready reference covering the full end-to-end
+system. Clearly marks PL vs PS, custom vs Digilent, and explains
+every technical concept a professor might ask about.
+
+==========================================================
+TABLE OF CONTENTS
+==========================================================
+  1. One-Sentence Summary
+  2. What the System Does (User Perspective)
+  3. End-to-End System Flowchart (ASCII)
+  4. PL vs PS Component Map
+  5. Detailed PL Pipeline (Hardware)
+  6. Detailed PS Pipeline (Software)
+  7. How an FFT Works (Technical Background)
+  8. How I2S Audio Works
+  9. How HDMI Video Output Works
+  10. How AXI4-Stream Works
+  11. Key Numbers & Parameters
+  12. Custom vs Digilent Summary
+  13. Bugs We Found & Fixed
+  14. Slide-by-Slide Presentation Outline
+
+==========================================================
+1. ONE-SENTENCE SUMMARY
+==========================================================
+
+Audio comes in from line-in, the FPGA hardware converts it to mono,
+runs a 256-point FFT, and the ARM CPU renders a 24-bar real-time
+spectrum analyzer to an HDMI monitor at 640x480.
+
+==========================================================
+2. WHAT THE SYSTEM DOES (USER PERSPECTIVE)
+==========================================================
+
+1. Plug a 3.5mm audio cable (phone, laptop, etc.) into the Zybo
+   line-in jack (J6)
+2. Connect an HDMI monitor to the Zybo HDMI-out port
+3. Power on the board, program the bitstream + software
+4. Press BTN3 to start -- audio plays through headphone jack AND
+   a live spectrum analyzer appears on the HDMI monitor
+5. Press BTN2 to toggle a 1.5x gain boost for quiet audio
+6. Press BTN3 again to stop
+
+The display shows:
+  - 24 colored bars rising and falling with the music
+  - Bars grouped into BASS (blue), VOCAL (green), HIGH (cyan)
+  - Peak-hold white dots that float above the bars
+  - Mirror reflections below the bars
+  - A reactive color strip at the top that shifts with the music
+  - Labels: "SPECTRUM ANALYZER", "BASS", "VOCAL", "HIGH"
+
+==========================================================
+3. END-TO-END SYSTEM FLOWCHART
+==========================================================
+
+This is the complete signal path from audio jack to HDMI monitor.
+[CUSTOM] = our code.  [DIGILENT] = from reference demos.
+[XILINX] = Vivado IP catalog.  Items in the PL box run in hardware.
+Items in the PS box run as C code on the ARM CPU.
+
++------------------------------------------------------------------+
+|                  PROGRAMMABLE LOGIC (PL / FPGA)                  |
+|                                                                  |
+|  3.5mm       +----------+    +---------------+                   |
+|  Line-In --> | SSM2603  | -> | I2S Receiver  |                   |
+|  Jack (J6)   | Codec    |    | [DIGILENT]    |                   |
+|              +----------+    +-------+-------+                   |
+|                 ^  I2C               |                           |
+|                 |  control    Stereo I2S stream                   |
+|                 |  from PS    (24-bit L, R interleaved @ 48kHz)  |
+|                 |                    |                            |
+|                 |            +-------v-----------+               |
+|                 |            | stereo_to_mono    |               |
+|                 |            | [CUSTOM - Amina]  |               |
+|                 |            | Mix (L+R)/2       |               |
+|                 |            +-------+-----------+               |
+|                 |                    |                            |
+|                 |             Mono stream (24-bit, duplicated)    |
+|                 |                    |                            |
+|                 |            +-------v-----------+               |
+|                 |            | axis_broadcast    |               |
+|                 |            | [CUSTOM - Shinika]|               |
+|                 |            | 1-to-2 splitter   |               |
+|                 |            +---+----------+----+               |
+|                 |                |          |                     |
+|                 |         PATH A |   PATH B |                    |
+|                 |         (FFT)  |   (Loop) |                    |
+|                 |                |          |                     |
+|                 |                |    +-----v------+             |
+|                 |                |    | I2S TX     |             |
+|                 |                |    | [DIGILENT] |             |
+|                 |                |    +-----+------+             |
+|                 |                |          |                     |
+|                 |                |     Headphone Out              |
+|                 |                |     (audio loopback)           |
+|                 |                |                                |
+|                 |        +------v-----------+                    |
+|                 |        | sample_buffer    |                    |
+|                 |        | [CUSTOM-Shinika] |                    |
+|                 |        | 256-sample BRAM  |                    |
+|                 |        +------+-----------+                    |
+|                 |               |                                 |
+|                 |        +------v-----------+                    |
+|                 |        | real_to_complex  |                    |
+|                 |        | [CUSTOM-Shinika] |                    |
+|                 |        | 24b real -> 32b  |                    |
+|                 |        | {imag=0, real}   |                    |
+|                 |        +------+-----------+                    |
+|                 |               |                                 |
+|                 |  +------------v---+  +---------------+         |
+|                 |  | Xilinx FFT IP  |<-| fft_config    |         |
+|                 |  | [XILINX]       |  | [CUSTOM-      |         |
+|                 |  | 256-pt pipelined  | Shinika]      |         |
+|                 |  | streaming I/O  |  | 0x0155: fwd,  |         |
+|                 |  +-------+--------+  | scale /256    |         |
+|                 |          |           +---------------+         |
+|                 |          |                                      |
+|                 |   +------v-----------+                         |
+|                 |   | tlast_gen        |                         |
+|                 |   | [CUSTOM-Shinika] |                         |
+|                 |   | Frame-align for  |                         |
+|                 |   | DMA TLAST        |                         |
+|                 |   +------+-----------+                         |
+|                 |          |                                      |
+|                 |   +------v-----------+                         |
+|                 |   | AXI DMA (S2MM)  |  Writes to DDR via HP0   |
+|                 |   | [XILINX]        |                          |
+|                 |   +------+-----------+                         |
+|                 |          |                                      |
+|                 |   IRQ to PS (S2MM complete)                     |
+|                 |          |                                      |
++------------------|---------|-----------------------------------------+
+                   |         |
++------------------|---------v-----------------------------------------+
+|                  |  PROCESSING SYSTEM (PS / ARM Cortex-A9)       |
+|                  |                                                |
+|   I2C codec  <---+  +------------------------------------------+|
+|   control           | main() polling loop          [CUSTOM-Abi] ||
+|                     |                                            ||
+|                     |  1. Check buttons (BTN3=audio, BTN2=gain)  ||
+|                     |  2. Check DMA S2MM event flag              ||
+|                     |  3. If event: processFFTFrame()            ||
+|                     |  4. Stall watchdog (2M cycle timeout)      ||
+|                     +-------------------+------------------------+|
+|                                         |                         |
+|                     +-------------------v------------------------+|
+|                     | processFFTFrame()            [CUSTOM-Abi]  ||
+|                     |                                            ||
+|                     |  a. Extract Re/Im from 32-bit FFT words    ||
+|                     |  b. Magnitude = sqrt(Re^2 + Im^2)         ||
+|                     |  c. Subtract noise floor (10.0)            ||
+|                     |  d. Map 128 bins -> 24 bars (log-freq)     ||
+|                     |  e. Apply group gain (0.4/1.0/1.8)        ||
+|                     |  f. Smooth decay (0.7x per frame)         ||
+|                     |  g. Peak-hold dots (12 frame hold)        ||
+|                     |  h. Render bars to framebuffer             ||
+|                     |  i. Cache flush + frame swap               ||
+|                     +--------------------------------------------+|
+|                                         |                         |
+|                     Framebuffer in DDR (640x480 BGR, 4 buffers)   |
+|                                         |                         |
++---------------------|--------------------------------------------+
+                      |
++---------------------v--------------------------------------------+
+|                  PL: HDMI OUTPUT PIPELINE                        |
+|                                                                  |
+|   DDR --> VDMA (HP2) --> AXI4S-to-Video --> rgb2dvi --> HDMI     |
+|           [XILINX]       [XILINX]           [DIGILENT]  monitor  |
+|                                                                  |
+|   Dynamic Clock (25 MHz pixel clock) --> VTC (sync gen)          |
+|   [DIGILENT]                              [XILINX]               |
+|                                                                  |
+|   All HDMI IPs on GP1 (0x8300_0000+), display_ctrl driver       |
+|   [DIGILENT - Jordan's section]                                  |
++------------------------------------------------------------------+
+
+
+MEMORY MAP:
+  HP0: Audio DMA (FFT frames from PL to DDR)
+  HP2: VDMA (framebuffer from DDR to HDMI)
+  GP0: DMA control regs, I2C, GPIO, I2S control
+  GP1: VDMA control, VTC, dynclk (HDMI IPs) @ 0x8300_0000+
+
+==========================================================
+4. PL vs PS COMPONENT MAP
+==========================================================
+
++---------------------------+----------------------------------+
+| PROGRAMMABLE LOGIC (PL)   | PROCESSING SYSTEM (PS)           |
+| Runs in FPGA fabric       | Runs on ARM Cortex-A9 @ 667MHz  |
+| Parallel, clock-by-clock  | Sequential C code                |
++---------------------------+----------------------------------+
+| I2S Receiver [DIGILENT]   | I2C codec config [DIGILENT]      |
+| I2S Transmitter [DIGILENT]| DMA interrupt handler [modified] |
+| stereo_to_mono [CUSTOM]   | processFFTFrame() [CUSTOM]       |
+| axis_broadcast [CUSTOM]   |   - magnitude computation        |
+| sample_buffer [CUSTOM]    |   - log-frequency binning        |
+| real_to_complex [CUSTOM]  |   - per-group gain normalization |
+| fft_config [CUSTOM]       |   - smooth decay + peak hold     |
+| Xilinx FFT IP [XILINX]   |   - full-frame bar rendering     |
+| tlast_gen [CUSTOM]        |   - cache flush + frame swap     |
+| AXI DMA [XILINX]         | main() loop [CUSTOM]             |
+| VDMA [XILINX]            |   - button handling               |
+| VTC [XILINX]             |   - stall watchdog                |
+| rgb2dvi [DIGILENT]       | display_ctrl driver [DIGILENT]    |
+| axi_dynclk [DIGILENT]   | audio init/start/stop [DIGILENT]  |
+| AXI GPIO [XILINX]       | GPIO/button handler [DIGILENT]    |
+| AXI Interconnects        | xpar_remap.h [modified]           |
++---------------------------+----------------------------------+
+
+WHY THIS PARTITIONING?
+
+The PL handles everything that needs to run at wire speed:
+  - Audio sampling at 48,000 samples/sec (can't miss a sample)
+  - FFT butterfly computations (pipelined, 1 output/clock)
+  - HDMI pixel output at 25 MHz (must be continuous)
+
+The PS handles everything that needs software flexibility:
+  - sqrt() for magnitude (ARM FPU is fast enough)
+  - Log-frequency binning (easy to tune in C, hard in Verilog)
+  - Full-frame rendering (complex visual effects)
+  - User interaction (buttons, gain control)
+
+==========================================================
+5. DETAILED PL PIPELINE (HARDWARE)
+==========================================================
+
+--- STAGE 1: Audio Capture ---
+Owner: Hemanth (audio codec) + Digilent IP
+
+The SSM2603 codec on the Zybo board converts analog audio to
+digital. It sits on the board as a separate chip connected via:
+  - I2S bus (data): BCLK, LRCLK, SDATA (PL-side, hardware)
+  - I2C bus (control): SDA, SCL (PS-side, software)
+
+The PS configures the codec via I2C at startup:
+  - Slave address: 0x1A
+  - Sample rate: 48 kHz (slave mode, clock from FPGA)
+  - Resolution: 24-bit per channel
+  - Input: line-in (R4 = 0b000000010)
+  - Interface: I2S mode (R7 = 0b000001010)
+
+The I2S Receiver IP (Digilent) captures the serial bitstream and
+outputs 32-bit AXI4-Stream words with 24-bit audio in the lower
+bits. The stream is interleaved: Left, Right, Left, Right...
+at 96,000 samples/sec total (48k per channel).
+
+--- STAGE 2: Stereo-to-Mono Mixing ---
+Owner: Amina [CUSTOM]
+
+Problem: The I2S output is stereo (L+R interleaved) but the FFT
+needs a single mono stream.
+
+Solution: stereo_to_mono.v implements a 4-state FSM:
+
+  State 0 (WAIT_LEFT):   Accept left sample, store it
+  State 1 (WAIT_RIGHT):  Accept right sample, compute average
+  State 2 (OUT_LEFT):    Output mono value (1st copy)
+  State 3 (OUT_RIGHT):   Output mono value (2nd copy)
+
+The mixing math:
+  1. Sign-extend both L and R from 24 bits to 25 bits
+     (prevents overflow when two max-positive values are added)
+  2. Add: sum = left_ext + right_ext  (25-bit result)
+  3. Average: mono = sum[24:1]  (arithmetic right shift = /2)
+
+Why output twice? The downstream expects the same data rate as
+the input (96k samples/sec). If we only output once per pair,
+we'd halve the rate. sample_buffer uses lr_toggle to keep only
+every other sample, giving 48k unique samples/sec for the FFT.
+
+--- STAGE 3: Stream Splitting ---
+Owner: Shinika [CUSTOM]
+
+axis_broadcast.v splits the mono stream into two copies:
+  - Path A: goes to the FFT pipeline (-> sample_buffer)
+  - Path B: goes to I2S Transmitter (-> headphone output)
+
+This lets the user hear the audio while the FFT processes it.
+
+The key design challenge: both outputs must accept each sample
+before the input advances. Uses per-output "done" flags:
+  - m0_done, m1_done track acceptance
+  - Input s_axis_tready = 1 only when both are done
+  - Prevents one fast output from starving the other
+
+--- STAGE 4: Sample Buffering ---
+Owner: Shinika [CUSTOM]
+
+sample_buffer.v accumulates 256 mono samples into BRAM, then
+bursts them out as a single frame.
+
+Why needed: The FFT IP processes blocks of 256 samples, not
+individual samples. The buffer collects a full frame before
+feeding the FFT.
+
+Implementation:
+  - 256 x 32-bit Block RAM (ram_style = "block" pragma)
+  - 2-state FSM: FILL (accept input) / DRAIN (burst output)
+  - lr_toggle: skips every other sample (right channel duplicate)
+  - Takes 512 input samples to fill (256 stereo pairs)
+  - Bursts 256 samples with TLAST on the last one
+
+--- STAGE 5: Format Conversion ---
+Owner: Shinika [CUSTOM]
+
+real_to_complex.v converts audio format for the FFT IP:
+  Input:  32-bit with 24-bit real audio in bits [23:0]
+  Output: 32-bit complex = {16-bit imaginary, 16-bit real}
+
+The conversion:
+  - Real part = input bits [23:8]  (top 16 of 24 bits)
+  - Imaginary part = 0  (audio is purely real)
+
+This is purely combinational (no clock, no state machine). It's
+just wire routing -- bits get rearranged, nothing is computed.
+
+Why bits [23:8] and not [23:0]? The FFT IP expects 16-bit
+components. We take the top 16 bits to preserve the sign bit and
+maximum dynamic range (sacrificing the least-significant 8 bits).
+
+--- STAGE 6: FFT Configuration ---
+Owner: Shinika [CUSTOM]
+
+fft_config.v drives the Xilinx FFT IP's configuration channel
+with a constant value: 16'h0155
+
+Breaking down 0x0155 = 0000_0001_0101_0101 in binary:
+  Bit [0] = 1:      Forward FFT (not inverse)
+  Bits [8:1] = 0xAA = 10_10_10_10:  Scaling schedule
+
+The scaling schedule has 4 fields (one per stage-pair of the
+256-point FFT). Each "10" means divide by 4 at that stage.
+Total scaling: 4 x 4 x 4 x 4 = 256, so output = input / 256.
+
+This prevents overflow in the fixed-point butterfly arithmetic.
+The /256 factor is the standard FFT normalization for N=256.
+
+m_axis_tvalid is tied permanently high (configuration never
+changes during operation).
+
+--- STAGE 7: Xilinx FFT IP ---
+Owner: Xilinx LogiCORE IP [XILINX IP CATALOG]
+
+Configuration:
+  - Transform length: 256 points
+  - Architecture: Pipelined Streaming I/O
+  - Arithmetic: Fixed-point (16-bit real + 16-bit imaginary)
+  - Output ordering: Natural (bin 0, 1, 2, ... 255)
+  - Interface: AXI4-Stream (data + config channels)
+
+The FFT IP takes 256 complex input samples and produces 256
+complex frequency-domain outputs. Internally it uses a radix-2
+or radix-4 butterfly network (see Section 7 for FFT background).
+
+Throughput: once the pipeline fills, it outputs one sample per
+clock cycle. At 100 MHz system clock, a 256-point transform
+completes in ~2.56 us (pipeline latency is longer for first frame).
+
+--- STAGE 8: Frame Alignment ---
+Owner: Shinika [CUSTOM]
+
+tlast_gen.v solves a critical DMA compatibility problem.
+
+The problem: AXI DMA expects TLAST to arrive exactly every 256
+samples to know when a frame is complete. The FFT IP generates
+its own TLAST based on internal pipeline timing, which may not
+align with the 256-sample boundaries the DMA expects. If TLAST
+arrives at the wrong sample, DMA enters error state (DMAIntErr).
+
+The solution:
+  Phase 1 (Unsynced): Discard all FFT output until we see a
+  TLAST from the FFT (this finds a frame boundary).
+
+  Phase 2 (Synced): Pass data through, but IGNORE the FFT's
+  TLAST. Instead, count samples 0-255 internally and generate
+  our own TLAST exactly every 256 samples.
+
+This guarantees the DMA always sees perfectly aligned frames.
+
+--- STAGE 9: DMA Transfer ---
+Owner: Xilinx AXI DMA IP [XILINX]
+
+The AXI DMA IP transfers FFT output frames from the PL to DDR
+memory through the HP0 port (high-performance memory interface).
+
+  Mode: S2MM (Stream-to-Memory-Mapped), Simple mode (not scatter-gather)
+  Transfer size: 1024 bytes (256 samples x 4 bytes each)
+  DDR addresses: FFT_BUF_A and FFT_BUF_B (ping-pong buffers)
+
+When the transfer completes, DMA fires an interrupt to the PS.
+The PS interrupt handler sets Demo.fDmaS2MMEvent = 1, which
+triggers the main loop to process the FFT data.
+
+==========================================================
+6. DETAILED PS PIPELINE (SOFTWARE)
+==========================================================
+
+--- STAGE 10: Interrupt & Main Loop ---
+Owner: Abi [CUSTOM main loop] + Digilent [DMA driver, modified]
+
+When the DMA S2MM interrupt fires:
+  1. fnS2MMInterruptHandler() reads and acknowledges the IRQ
+  2. If completion (IOC bit): sets Demo.fDmaS2MMEvent = 1
+  3. If error (TLAST mismatch): sets Demo.fDmaError = 1,
+     resets DMA (data is still valid, so we process anyway)
+
+The main() loop polls this flag:
+  1. Check Demo.fUserIOEvent (button presses from GPIO ISR)
+  2. Check Demo.fDmaS2MMEvent (FFT frame ready)
+  3. If ready: invalidate cache, kick off next DMA transfer
+     (pipelining), then call processFFTFrame()
+  4. Increment stallCount; if > 2,000,000, restart pipeline
+
+--- STAGE 11: FFT Magnitude Extraction ---
+Owner: Abi [CUSTOM]
+
+The raw FFT data in DDR is 256 x 32-bit words. Each word:
+  Bits [15:0]  = Real part (16-bit signed, two's complement)
+  Bits [31:16] = Imaginary part (16-bit signed)
+
+For each bin i from 1 to 127 (skip bin 0 = DC, skip 128-255 =
+mirror of 0-127 due to Nyquist symmetry):
+
+  int16_t re = (int16_t)(pBuf[i] & 0xFFFF);
+  int16_t im = (int16_t)((pBuf[i] >> 16) & 0xFFFF);
+  float mag = sqrtf((float)(re*re) + (float)(im*im));
+
+The sqrtf() runs on the ARM Cortex-A9 hardware FPU. Computing
+128 square roots per frame takes well under 1 ms.
+
+Noise floor subtraction: if mag > 10.0, keep mag - 10.0, else 0.
+This suppresses quantization noise that would make all bars show
+a small baseline even in silence.
+
+--- STAGE 12: Logarithmic Frequency Binning ---
+Owner: Abi [CUSTOM]
+
+The 128 FFT bins span 0 to 24 kHz linearly (187.5 Hz per bin).
+But human hearing is logarithmic -- we perceive pitch as ratios,
+not linear Hz. An octave is always a 2x frequency ratio.
+
+Linear binning (128 bins / 24 bars = 5.3 bins per bar) would
+waste most bars on inaudible high frequencies and give only 1-2
+bars to all of bass.
+
+Our log binning divides into 3 frequency groups:
+
+  BASS:  5 bars,  FFT bins 1-4    (~187 - 750 Hz)
+         Kick drums, bass guitar, low synths
+  VOCAL: 10 bars, FFT bins 4-35   (~750 Hz - 6.6 kHz)
+         Vocals, guitars, snare, most musical content
+  HIGH:  9 bars,  FFT bins 35-80  (~6.6 - 15 kHz)
+         Cymbals, hi-hats, sibilance, air
+
+Within each group, bins are distributed logarithmically:
+  logLo = ln(first_bin)
+  logHi = ln(last_bin)
+  For bar i of N in the group:
+    binStart = round(exp(logLo + (i/N) * (logHi - logLo)))
+    binEnd   = round(exp(logLo + ((i+1)/N) * (logHi - logLo))) - 1
+
+This gives narrow bars in bass (few bins, high resolution where
+it matters) and wider bars in highs (many bins grouped together).
+
+--- STAGE 13: Per-Group Gain Normalization ---
+Owner: Abi [CUSTOM]
+
+Raw FFT magnitudes are imbalanced across frequency:
+  - Bass dominates in most music (large magnitude)
+  - Highs are naturally quiet (small magnitude)
+
+Without correction, bass bars would pin at max while highs barely
+move. We apply per-group gain multipliers:
+
+  Bass:  0.4x  (attenuate -- bass is already loud)
+  Vocal: 1.0x  (reference, no change)
+  High:  1.8x  (boost -- make quiet highs visible)
+
+Plus user gain toggle: 1.5x when BTN2 is pressed (for quiet audio).
+
+Final height calculation:
+  height_pixels = (peak_magnitude * user_gain * group_gain) / 2.5
+  Clamped to max 310 pixels.
+
+--- STAGE 14: Smooth Decay & Peak Hold ---
+Owner: Abi [CUSTOM]
+
+Smooth Decay (bars):
+  If new height >= current:  bar rises instantly (capture transients)
+  If new height < current:   bar = current * 0.7 (gradual fall-off)
+
+  After 10 frames of silence, a 310px bar drops to:
+  310 * 0.7^10 = 310 * 0.028 = ~9px (nearly gone)
+
+  This prevents flickering while keeping responsiveness.
+
+Peak Hold (white dots):
+  If bar height >= peak:     peak = bar height, hold counter = 12
+  While hold counter > 0:    peak stays, counter decrements each frame
+  When counter = 0:          peak falls at 4 pixels per frame
+
+  The 12-frame hold = ~260ms at 46 FPS. The peak dot "floats" above
+  the bar, showing the recent maximum even as the bar falls away.
+
+--- STAGE 15: Framebuffer Rendering ---
+Owner: Abi [CUSTOM]
+
+Rendering happens to a 640x480 BGR framebuffer (3 bytes/pixel).
+The rendering pipeline draws layers in order:
+
+Layer 1 - GRADIENT BACKGROUND:
+  Dark at top (R=8, G=8, B=12), slightly brighter at bottom.
+  Blue channel increases 2x faster than R/G for a cool-toned look.
+
+Layer 2 - MAIN BARS:
+  24 bars, each ~19px wide with 2px gap between.
+  8px gap between the 3 groups (BASS | gap | VOCAL | gap | HIGH).
+  Bars rise from baseline (Y=350) upward, max height 310px.
+  Brightness gradient: 100% at top of bar, ~50% at baseline.
+  Colors: blue/purple (bass) -> green/yellow (vocal) -> cyan (high).
+
+Layer 3 - GLOW HIGHLIGHT:
+  Top 3 rows of each bar get extra brightness:
+    Row 0: +200 brightness (near white)
+    Row 1: +140 brightness
+    Row 2: +80 brightness
+  Creates a "hot" glowing peak effect.
+
+Layer 4 - MIRROR REFLECTION:
+  Below the baseline, a faded copy of each bar extends downward.
+  Max depth: 80px.  Fades from 24% brightness to 0% over depth.
+  Blends with background color for a reflective floor effect.
+
+Layer 5 - PEAK HOLD DOTS:
+  1px white dot at peak height for each bar.
+  1px bar-colored dot directly below it (shadow).
+
+Layer 6 - TEXT LABELS:
+  "BASS", "VOCAL", "HIGH" centered under each group.
+  "SPECTRUM ANALYZER" centered at top (Y=10).
+  Custom 5x7 bitmap font, rendered at 2x scale (10x14 per char).
+
+Layer 7 - REACTIVE TOP COLOR BAR:
+  Top 3 rows of screen colored by frequency group energy mix:
+    Compute total energy in each group (sum of bar heights)
+    Blend group colors proportionally: bass_weight * blue +
+    vocal_weight * green + high_weight * cyan
+  Creates a real-time color indicator that shifts with the music.
+
+After rendering, two critical steps:
+  Xil_DCacheFlushRange()  - push pixels from CPU cache to DDR
+  DisplayChangeFrame()    - tell VDMA to read the new buffer
+
+==========================================================
+7. HOW AN FFT WORKS (TECHNICAL BACKGROUND)
+==========================================================
+
+WHAT IT DOES:
+  The FFT (Fast Fourier Transform) converts a time-domain signal
+  (a sequence of audio samples over time) into a frequency-domain
+  representation (how much energy is at each frequency).
+
+  Input:  256 audio samples (one "frame" of ~5.33ms at 48kHz)
+  Output: 256 complex numbers, where bin k represents frequency
+          k * (48000/256) = k * 187.5 Hz
+
+  Only bins 0-127 are unique (Nyquist theorem: the upper 128 are
+  the mirror image of the lower 128 for real-valued input).
+
+THE MATH (simplified):
+  For each frequency bin k (0 to N-1):
+    X[k] = sum over n=0 to N-1 of:  x[n] * e^(-j*2*pi*k*n/N)
+
+  Where x[n] is the input sample at time n, and the exponential
+  is a rotating complex number (cosine + j*sine). The sum
+  multiplies each input sample by a "test frequency" and adds up
+  the correlation. High correlation = lots of energy at that freq.
+
+WHY "FAST":
+  The naive DFT requires N^2 = 65,536 multiplications for N=256.
+  The FFT algorithm (Cooley-Tukey) reduces this to N*log2(N) =
+  256 * 8 = 2,048 multiplications -- a 32x speedup.
+
+  It works by recursively splitting the N-point DFT into smaller
+  DFTs (divide and conquer). A 256-point FFT becomes two 128-point
+  FFTs, which become four 64-point FFTs, etc., down to trivial
+  2-point "butterfly" operations.
+
+THE BUTTERFLY:
+  The basic unit of FFT computation:
+    A' = A + W * B     (W is a "twiddle factor" = complex rotation)
+    B' = A - W * B
+
+  Each butterfly takes two complex inputs and produces two complex
+  outputs. A 256-point FFT has log2(256) = 8 stages of 128
+  butterflies each = 1,024 butterfly operations total.
+
+OUR IMPLEMENTATION:
+  We use the Xilinx FFT LogiCORE IP, which implements a fully
+  pipelined streaming architecture:
+  - Input samples stream in one per clock cycle
+  - Internal pipeline has 8 butterfly stages
+  - Output samples stream out one per clock cycle (after initial
+    latency to fill the pipeline)
+  - Fixed-point arithmetic (16-bit real + 16-bit imaginary)
+  - Scaling: /4 at each stage-pair to prevent overflow
+  - At 100 MHz, processes a 256-point FFT in ~2.56 us
+
+WHY HARDWARE FFT (not software)?
+  A software FFT on the ARM Cortex-A9 at 667 MHz would take
+  roughly 50-100 us for a 256-point FFT (with FPU). This would
+  work, but:
+  1. It would consume CPU time needed for rendering (~20ms/frame)
+  2. The pipelined hardware FFT has deterministic, guaranteed
+     latency (no cache misses, no interrupts, no OS jitter)
+  3. The hardware FFT runs continuously without CPU involvement
+  4. Demonstrates the FPGA's advantage: parallel compute in fabric
+
+FREQUENCY RESOLUTION:
+  With N=256 and fs=48kHz:
+    Resolution = fs/N = 48000/256 = 187.5 Hz per bin
+    Maximum frequency = fs/2 = 24 kHz (Nyquist limit)
+    Frame time = N/fs = 256/48000 = 5.33 ms per frame
+    Max FFT update rate = 1/5.33ms = 187.5 frames/sec
+
+  Actual display rate is lower (~46 FPS) due to rendering time
+  and HDMI vsync (60 Hz).
+
+==========================================================
+8. HOW I2S AUDIO WORKS
+==========================================================
+
+I2S (Inter-IC Sound) is a 3-wire serial protocol for audio:
+
+  BCLK  (Bit Clock):       Clocks each bit of audio data
+  LRCLK (Left/Right Clock): Indicates which channel (L or R)
+  SDATA (Serial Data):      Audio sample bits, MSB first
+
+Timing:
+  At 48kHz sample rate with 24-bit samples:
+    LRCLK toggles at 48 kHz (one full cycle = one L+R pair)
+    BCLK = 48000 * 2 * 32 = 3.072 MHz (32 bits per channel slot)
+    Data is transmitted MSB-first, with 24 valid bits and 8 padding
+
+  When LRCLK is low: left channel data on SDATA
+  When LRCLK is high: right channel data on SDATA
+
+  The I2S Receiver IP samples SDATA on BCLK edges, assembles
+  24-bit words, and outputs them as 32-bit AXI4-Stream transactions.
+
+Codec Control (I2C, separate from I2S):
+  The PS configures the SSM2603 codec registers over I2C:
+    Address 0x1A, registers R0-R15
+    Sets input source, volume, sample rate, power, interface mode
+  This is done once at startup (and again after 2-second PLL warmup).
+
+==========================================================
+9. HOW HDMI VIDEO OUTPUT WORKS
+==========================================================
+
+The HDMI pipeline reads pixel data from DDR and converts it to
+TMDS differential signaling for the HDMI monitor.
+
+SIGNAL CHAIN:
+  1. VDMA (Video DMA): Reads framebuffer from DDR via HP2 port
+     - Circular buffer mode: cycles through 4 framebuffers
+     - Reads at 100 MHz AXI clock speed
+     - Outputs AXI4-Stream pixel data
+
+  2. AXI4-Stream to Video Out: Converts AXI-Stream to timed video
+     - Has async FIFO (100 MHz AXI -> 25 MHz pixel clock)
+     - Outputs pixel data synchronized to VTC timing
+
+  3. VTC (Video Timing Controller): Generates sync signals
+     - HSYNC: horizontal sync (end of each row)
+     - VSYNC: vertical sync (end of each frame)
+     - DE (Data Enable): pixels are valid
+     - Configured for 640x480 @ 60Hz standard VGA timing:
+         H: 640 active + 16 front porch + 96 sync + 48 back porch = 800
+         V: 480 active + 10 front porch + 2 sync + 33 back porch = 525
+
+  4. Dynamic Clock (axi_dynclk): Generates pixel clock
+     - 25.175 MHz for 640x480 (800 * 525 * 60 Hz)
+     - PLL-based, software-configurable for different resolutions
+
+  5. rgb2dvi: Converts parallel RGB to HDMI/DVI signaling
+     - 24-bit RGB -> 10-bit TMDS encoding per channel
+     - Outputs on 4 differential pairs (R, G, B, Clock)
+     - Uses 125 MHz serializer clock (5x pixel clock for 10-bit DDR)
+
+PIXEL FORMAT:
+  Each pixel = 3 bytes in BGR order in memory:
+    Byte 0 = Blue,  Byte 1 = Green,  Byte 2 = Red
+  Row stride = 640 * 3 = 1920 bytes
+  Frame size = 640 * 480 * 3 = 921,600 bytes (~900 KB)
+
+CACHE FLUSH:
+  The ARM CPU writes pixels to cache, not directly to DDR. The
+  VDMA reads from DDR, bypassing cache. Without flushing cache
+  to DDR before frame swap, the VDMA would display stale data.
+  Xil_DCacheFlushRange() writes all dirty cache lines to DDR.
+
+==========================================================
+10. HOW AXI4-STREAM WORKS
+==========================================================
+
+AXI4-Stream is the protocol connecting all PL components. It's a
+simple handshake-based streaming interface:
+
+SIGNALS:
+  TDATA  [31:0]:  The data payload (audio sample, FFT output, etc.)
+  TVALID:         Source says "data is ready"
+  TREADY:         Sink says "I can accept data"
+  TLAST:          Marks the last beat of a frame/packet
+  TKEEP  [3:0]:   Byte enable mask (which bytes are valid)
+
+RULES:
+  - Data transfers ONLY when TVALID && TREADY are both high
+  - Source must not change TDATA while TVALID is high and TREADY
+    is low (data must be held stable)
+  - TLAST marks frame boundaries (critical for DMA)
+
+BACK-PRESSURE:
+  If a sink is busy, it holds TREADY low. The source stalls.
+  This propagates backward through the entire pipeline:
+    DMA busy -> tlast_gen stalls -> FFT stalls -> sample_buffer
+    stalls -> axis_broadcast stalls -> stereo_to_mono stalls
+  No data is lost. The pipeline simply pauses until the bottleneck
+  clears. This is why AXI4-Stream is ideal for real-time pipelines.
+
+==========================================================
+11. KEY NUMBERS & PARAMETERS
+==========================================================
+
+AUDIO:
+  Sample rate:          48,000 Hz
+  Bit depth:            24-bit signed per channel
+  Channels:             Stereo in, mixed to mono
+  Codec:                SSM2603 (I2C addr 0x1A)
+  I2S bit clock:        3.072 MHz
+
+FFT:
+  Size:                 256 points
+  Usable bins:          128 (Nyquist: bins 0-127)
+  Frequency resolution: 187.5 Hz per bin
+  Frame time:           5.33 ms (256 / 48000)
+  Scaling:              /256 total (fft_config = 0x0155)
+  Max frequency:        24 kHz (bin 127)
+
+DISPLAY:
+  Resolution:           640 x 480 pixels
+  Color depth:          24-bit BGR (3 bytes/pixel)
+  Pixel clock:          ~25.175 MHz
+  Refresh rate:         60 Hz (VDMA continuous)
+  Framebuffers:         4 (double+ buffering)
+  Frame size:           921,600 bytes
+  Row stride:           1,920 bytes
+
+SPECTRUM BARS:
+  Total bars:           24
+  Bass bars:            5  (bins 1-4, ~187-750 Hz)
+  Vocal bars:           10 (bins 4-35, ~750 Hz-6.6 kHz)
+  High bars:            9  (bins 35-80, ~6.6-15 kHz)
+  Bar max height:       310 px
+  Bar baseline Y:       350 px
+  Bar width:            ~19 px each, 2 px gap
+  Group gap:            8 px between groups
+
+GAIN & DECAY:
+  Noise floor:          10.0 (magnitude threshold)
+  Height scale:         /2.5 (magnitude to pixels)
+  Bass gain:            0.4x
+  Vocal gain:           1.0x
+  High gain:            1.8x
+  User gain boost:      1.5x (BTN2 toggle)
+  Smooth decay:         0.7x per frame
+  Peak hold:            12 frames (~260 ms)
+  Peak fall rate:       4 px/frame
+
+VISUAL EFFECTS:
+  Glow rows:            3 px at bar top (+200, +140, +80 brightness)
+  Mirror depth:         80 px max below baseline
+  Mirror fade:          24% brightness at top to 0% at bottom
+  Background:           R=8, G=8, B=12 (dark blue-black)
+  Title color:          R=50, G=55, B=70 (muted gray-blue)
+  Font:                 5x7 bitmap, rendered at 2x scale
+
+MEMORY MAP:
+  HP0:  Audio DMA (FFT data, ~46 KB/s)
+  HP2:  VDMA (framebuffer reads, ~55 MB/s)
+  GP0:  DMA regs, I2C, GPIO, I2S control
+  GP1:  HDMI IPs (VDMA, VTC, dynclk) @ 0x8300_0000+
+  FFT_BUF_A:  DDR_BASE + 0x10000000
+  FFT_BUF_B:  DDR_BASE + 0x10010000 (64 KB offset)
+
+TIMING:
+  Audio frame:          5.33 ms (256 samples at 48 kHz)
+  FFT compute:          ~2.56 us (pipelined hardware)
+  SW processing:        ~5 ms (magnitude + render)
+  End-to-end latency:   ~10-15 ms (audio in to display update)
+  Display update rate:  ~46 FPS
+
+==========================================================
+12. CUSTOM vs DIGILENT SUMMARY
+==========================================================
+
+CUSTOM (written by us):
+  Verilog (6 files):
+    stereo_to_mono.v     - Amina
+    sample_buffer.v      - Shinika
+    real_to_complex.v    - Shinika
+    fft_config.v         - Shinika
+    tlast_gen.v          - Shinika
+    axis_broadcast.v     - Shinika
+
+  C code (2 new files):
+    spectrum/spectrum.c  - Abi (all FFT processing + rendering)
+    spectrum/spectrum.h  - Abi
+
+  C code (heavily modified from Digilent):
+    demo.c     - main loop, init, start/stop, watchdog
+    demo.h     - DemoState struct, FFT constants
+    dma/dma.c  - TLAST error handling, S2MM-only interrupts
+    xpar_remap.h - combined audio+HDMI SDT remaps with +32 offset
+
+  C code (minor modifications from Digilent):
+    audio/audio.c       - DemoState rename, line input fix
+    userio/userio.c     - DemoState rename
+    dma/dma.h           - comment cleanup
+    display_ctrl/display_ctrl.c - added ClkStop() before ClkStart()
+    CMakeLists.txt      - added spectrum/ subdirectory
+    UserConfig.cmake    - added spectrum.c to sources
+
+DIGILENT (unchanged):
+    iic/iic.c, iic.h         - I2C driver
+    intc/intc.c, intc.h      - Interrupt controller setup
+    platform.c, .h, _config.h - BSP platform
+    xtime_l.h                 - Timer header
+    audio/audio.h             - Audio header
+    userio/userio.h           - GPIO header
+    display_ctrl/display_ctrl.h - Display header
+    display_ctrl/vga_modes.h  - VGA timing definitions
+    dynclk/dynclk.c, dynclk.h - Dynamic clock driver
+
+XILINX IP (from Vivado catalog):
+    FFT LogiCORE, AXI DMA, VDMA, VTC, AXI GPIO,
+    AXI Interconnect, Clocking Wizard, Processing System
+
+DIGILENT IP (from reference designs):
+    I2S Receiver/Transmitter, rgb2dvi, axi_dynclk
+
+==========================================================
+13. BUGS WE FOUND & FIXED
+==========================================================
+
+BUG 1: GP1 APER_CLK (Vivado 2025.2 tool bug)
+  Symptom:  HDMI completely dead (no signal to monitor)
+  Cause:    Vivado generates ps7_init.tcl with register 0xF800012C
+            set to 0x01EC044D, which has bit 20 = 0. Bit 20 is the
+            GP1 peripheral clock enable. Without it, all HDMI IPs
+            (VDMA, VTC, dynclk) connected via GP1 have no clock.
+  Fix:      Manually change 0x01EC044D -> 0x01FC044D (set bit 20)
+            at all 3 occurrences in ps7_init.tcl.
+  Gotcha:   Must re-apply after every XSA re-export from Vivado.
+
+BUG 2: DMA TLAST Frame Misalignment
+  Symptom:  DMA fires error interrupts (DMAIntErr) every frame
+  Cause:    FFT output TLAST doesn't align with 256-sample boundaries
+            expected by the DMA. DMA sees TLAST at wrong position,
+            thinks the transfer size is wrong, and errors out.
+  Fix:      Added tlast_gen.v to sync to FFT frame boundaries and
+            generate clean TLAST every 256 samples.
+
+BUG 3: Memory Port Contention (HP0 overloaded)
+  Symptom:  DMA stalls, display freezes, watchdog restarts pipeline
+  Cause:    Both VDMA (framebuffer reads, ~55 MB/s) and audio DMA
+            (FFT writes) shared HP0. VDMA's large burst reads
+            blocked audio DMA writes.
+  Fix:      Moved VDMA to HP2. Each path gets its own memory port.
+
+BUG 4: I2S FIFO Clock Domain Reset
+  Symptom:  Left and right audio channels swap randomly
+  Cause:    I2S FIFOs not properly reset between runs. Stale data
+            in the FIFO shifts the L/R alignment by one sample.
+  Fix:      Added FIFO reset (bits 30, 31 of I2S_FIFO_CONTROL_REG)
+            in fnStartAudio() before enabling the stream.
+
+BUG 5: SDT Name Incompatibility (Vitis 2025.2)
+  Symptom:  Code compiles but interrupts never fire, system dead
+  Cause:    Vitis 2025.2 SDT flow changed all XPAR_ macro names.
+            Fabric interrupt IDs are 0-based SPI offsets, but GIC
+            needs them as ID + 32 (XSCUGIC_SPI_INT_ID_START).
+  Fix:      Created xpar_remap.h with macro mappings and +32 offset
+            for all fabric interrupt defines.
+
+==========================================================
+14. SLIDE-BY-SLIDE PRESENTATION OUTLINE
+==========================================================
+
+Slide 1: TITLE
+  "Real-Time Audio Spectrum Analyzer on Zybo Z7-10"
+  CMPE240 Spring 2026, team names
+
+Slide 2: WHAT IT DOES (demo video or photo)
+  Live demo or screenshot of the display
+  "Audio in -> FFT in hardware -> 24-bar spectrum on HDMI"
+
+Slide 3: SYSTEM OVERVIEW (block diagram)
+  High-level flowchart from Section 3
+  Color-code: blue = PL, green = PS, red = custom
+
+Slide 4: WHY FPGA? (HW/SW partitioning)
+  PL: real-time audio + FFT (deterministic, parallel)
+  PS: rendering + user control (flexible, complex math)
+  Table from Section 4
+
+Slide 5: AUDIO INPUT PIPELINE
+  SSM2603 codec -> I2S -> stereo_to_mono
+  I2S/I2C protocol explanation
+  48 kHz, 24-bit, stereo -> mono mixing math
+
+Slide 6: FFT PIPELINE (the core innovation)
+  sample_buffer -> real_to_complex -> FFT IP -> tlast_gen
+  Explain what FFT does (time -> frequency)
+  256-point, 187.5 Hz resolution, /256 scaling
+
+Slide 7: HOW FFT WORKS (background)
+  Butterfly diagram
+  O(N^2) DFT vs O(N log N) FFT
+  Why hardware: pipelined, 1 sample/clock, no CPU load
+
+Slide 8: SOFTWARE PROCESSING
+  Magnitude extraction: sqrt(re^2 + im^2)
+  Log-frequency binning (why not linear)
+  Per-group gain: bass 0.4, vocal 1.0, high 1.8
+
+Slide 9: VISUALIZATION FEATURES
+  Annotated screenshot showing each visual layer
+  Smooth decay, peak hold, glow, mirror, reactive color bar
+  Double-buffered rendering with cache flush
+
+Slide 10: HDMI OUTPUT PIPELINE
+  VDMA -> VTC -> rgb2dvi -> HDMI
+  640x480 @ 60Hz, 25 MHz pixel clock
+  Clock domain crossing (100 MHz AXI -> 25 MHz video)
+
+Slide 11: MEMORY ARCHITECTURE
+  HP0: audio DMA, HP2: VDMA (why separated)
+  GP0: control regs, GP1: HDMI IPs
+  DDR layout: FFT buffers + 4 framebuffers
+
+Slide 12: BUGS & LESSONS LEARNED
+  GP1 clock bug (Vivado tool issue)
+  DMA TLAST alignment (added tlast_gen)
+  Memory contention (HP0 -> HP0 + HP2)
+  SDT compatibility (+32 interrupt offset)
+
+Slide 13: KEY NUMBERS
+  Table from Section 11 (top 15-20 most important values)
+
+Slide 14: CUSTOM vs DIGILENT
+  Pie chart or table showing code breakdown
+  6 custom Verilog modules, 2 new C files, 4 heavily modified
+  12 unchanged Digilent files
+
+Slide 15: DEMO / Q&A
+  Live demonstration (if available)
+  Or recorded video of the spectrum analyzer reacting to music
