@@ -1,9 +1,6 @@
-/*
- * dma.h
- *
- *  Created on: Jan 20, 2015
- *      Author: ROHegbeC
- */
+// dma.h
+// AXI DMA driver interface
+// CMPE240 Spring 2026
 
 #ifndef DMA_H_
 #define DMA_H_
@@ -11,11 +8,6 @@
 #include "xparameters.h"
 #include "xil_printf.h"
 #include "xaxidma.h"
-
-/************************** Variable Definitions *****************************/
-
-
-/************************** Function Definitions *****************************/
 
 void fnS2MMInterruptHandler (void *Callback);
 void fnMM2SInterruptHandler (void *Callback);

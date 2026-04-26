@@ -40,6 +40,7 @@ set(USER_COMPILE_SOURCES
 "iic/iic.c"
 "intc/intc.c"
 "userio/userio.c"
+"spectrum/spectrum.c"
 )
 
 # -----------------------------------------

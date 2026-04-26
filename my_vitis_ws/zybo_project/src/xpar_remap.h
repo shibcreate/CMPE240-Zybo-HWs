@@ -1,3 +1,7 @@
+// xpar_remap.h
+// Remaps Vitis 2025.2 SDT-style parameter names to legacy xparameters names
+// CMPE240 Spring 2026
+
 #ifndef XPAR_REMAP_H
 #define XPAR_REMAP_H
 
@@ -60,7 +64,6 @@
 #define XPAR_CPU_CORTEXA9_0_CPU_CLK_FREQ_HZ  XPAR_CPU_CORE_CLOCK_FREQ_HZ
 #endif
 
-// HDMI display: VDMA, VTC, dynclk remaps for SDT compatibility
 #ifndef XPAR_AXI_DYNCLK_0_S_AXI_LITE_BASEADDR
 #define XPAR_AXI_DYNCLK_0_S_AXI_LITE_BASEADDR XPAR_AXI_DYNCLK_0_BASEADDR
 #endif

@@ -1,15 +1,7 @@
-/************************************************************************/
-/*  tlast_gen.v                                                         */
-/*  AXI4-Stream TLAST frame aligner                                     */
-/*                                                                      */
-/*  Sits between FFT output and DMA S2MM input.                         */
-/*  Waits for the FFT's own TLAST to find a frame boundary, then        */
-/*  passes aligned frames with correctly-timed TLAST for the DMA.       */
-/*                                                                      */
-/*  Fixes DMAIntErr caused by DMA starting mid-FFT-frame.               */
-/*                                                                      */
-/*  CMPE240 Spring 2026                                                 */
-/************************************************************************/
+// tlast_gen.v
+// Aligns FFT output frames for DMA by waiting for FFT's TLAST before passing data
+// Fixes DMAIntErr caused by DMA starting mid-frame
+// CMPE240 Spring 2026
 
 `timescale 1ns / 1ps
 
@@ -17,14 +9,13 @@
 (* X_INTERFACE_PARAMETER = "ASSOCIATED_BUSIF s_axis:m_axis, ASSOCIATED_RESET aresetn" *)
 
 module tlast_gen #(
-    parameter FRAME_SIZE = 256   // Samples per FFT frame
+    parameter FRAME_SIZE = 256
 )(
     input  wire        aclk,
     (* X_INTERFACE_INFO = "xilinx.com:signal:reset:1.0 aresetn RST" *)
     (* X_INTERFACE_PARAMETER = "POLARITY ACTIVE_LOW" *)
     input  wire        aresetn,
 
-    // AXI4-Stream Slave (from FFT M_AXIS_DATA)
     (* X_INTERFACE_INFO = "xilinx.com:interface:axis:1.0 s_axis TDATA" *)
     (* X_INTERFACE_PARAMETER = "TDATA_NUM_BYTES 4, HAS_TLAST 1, HAS_TKEEP 1, HAS_TREADY 1" *)
     input  wire [31:0] s_axis_tdata,
@@ -37,7 +28,6 @@ module tlast_gen #(
     (* X_INTERFACE_INFO = "xilinx.com:interface:axis:1.0 s_axis TKEEP" *)
     input  wire [3:0]  s_axis_tkeep,
 
-    // AXI4-Stream Master (to DMA S_AXIS_S2MM)
     (* X_INTERFACE_INFO = "xilinx.com:interface:axis:1.0 m_axis TDATA" *)
     (* X_INTERFACE_PARAMETER = "TDATA_NUM_BYTES 4, HAS_TLAST 1, HAS_TKEEP 1, HAS_TREADY 1" *)
     output wire [31:0] m_axis_tdata,
@@ -51,13 +41,11 @@ module tlast_gen #(
     output wire [3:0]  m_axis_tkeep
 );
 
-    reg        synced;    // 1 after first FFT TLAST seen
-    reg [8:0]  count;     // 0 to FRAME_SIZE-1
+    reg        synced;
+    reg [8:0]  count;
 
-    // Always accept data from FFT (don't stall the pipeline)
     assign s_axis_tready = synced ? m_axis_tready : 1'b1;
 
-    // Only pass data downstream after synced to frame boundary
     assign m_axis_tdata  = s_axis_tdata;
     assign m_axis_tvalid = synced & s_axis_tvalid;
     assign m_axis_tkeep  = s_axis_tkeep;
@@ -68,9 +56,9 @@ module tlast_gen #(
             synced <= 1'b0;
             count  <= 9'd0;
         end else if (!synced) begin
-            // Discard data until we see FFT's TLAST (end of frame)
+            // discard until we see a TLAST (frame boundary)
             if (s_axis_tvalid && s_axis_tlast)
-                synced <= 1'b1;  // Next sample is start of a new frame
+                synced <= 1'b1;
         end else if (s_axis_tvalid && m_axis_tready) begin
             if (count == FRAME_SIZE - 1)
                 count <= 9'd0;

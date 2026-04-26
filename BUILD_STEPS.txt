@@ -507,7 +507,6 @@ workspace (see Steps 8-13 below).
   sw_src/src/                   Mirror of my_vitis_ws/zybo_project/src/
                                 (kept in sync — either location works)
   system_wrapper.xsa            Exported hardware definition (gitignored)
-  CLAUDE.md                     Developer notes (GP1 bug, HDMI addresses)
   BUILD_STEPS.txt               This file
   Midterm - Design Document.pdf Project design document
 

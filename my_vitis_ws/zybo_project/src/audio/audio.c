@@ -63,7 +63,7 @@
 
 /************************** Variable Definitions *****************************/
 
-extern volatile sDemo_t Demo;
+extern volatile DemoState Demo;
 
 /******************************************************************************
  * Function to write one byte (8-bits) to one of the registers from the audio

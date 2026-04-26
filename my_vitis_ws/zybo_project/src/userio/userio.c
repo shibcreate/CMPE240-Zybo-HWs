@@ -58,7 +58,7 @@
 
 #define USERIO_DEVICE_ID 	XPAR_XGPIO_0_BASEADDR
 
-extern volatile sDemo_t Demo;
+extern volatile DemoState Demo;
 
 void fnUpdateLedsFromSwitches(XGpio *psGpio);
 
