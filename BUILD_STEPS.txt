@@ -34,6 +34,23 @@ Hardware controls:
   - SW1:  Toggle digital gain boost (1.5x) for quiet songs
 
 ================================================================================
+  USING PREBUILT FILES (SKIP VIVADO ENTIRELY)
+================================================================================
+
+If you just want to flash the board without rebuilding hardware, prebuilt
+binaries are included in the prebuilt/ folder:
+
+  prebuilt/system_wrapper.xsa   - Hardware definition (includes bitstream)
+  prebuilt/system_wrapper.bit   - FPGA bitstream
+
+To use these, skip Steps 2-7 and go directly to Step 8 (Vitis setup).
+When Step 9 asks for an XSA file, point it to:
+    <clone-path>/prebuilt/system_wrapper.xsa
+
+When Step 13 asks you to copy the bitstream, use:
+    <clone-path>/prebuilt/system_wrapper.bit
+
+================================================================================
   WHY A FRESH CLONE DOESN'T "JUST BUILD"
 ================================================================================
 
@@ -503,6 +520,10 @@ workspace (see Steps 8-13 below).
     xtime_l.h                   Timer header (missing from SDT BSP)
     CMakeLists.txt              Customized build config (include dirs, dynclk, -lm)
     UserConfig.cmake            CMake config with subdirectory source list
+
+  prebuilt/                     Prebuilt binaries (skip Vivado, go to Vitis)
+    system_wrapper.xsa          Hardware definition with bitstream
+    system_wrapper.bit          FPGA bitstream
 
   sw_src/src/                   Mirror of my_vitis_ws/zybo_project/src/
                                 (kept in sync — either location works)
