@@ -50,6 +50,23 @@ When Step 9 asks for an XSA file, point it to:
 When Step 13 asks you to copy the bitstream, use:
     <clone-path>/prebuilt/system_wrapper.bit
 
+AUTOMATED SETUP SCRIPT (Steps 6, 7, and patches):
+  After creating the platform and application in Vitis (Steps 8-11),
+  you can run the setup script instead of doing Steps 12-13 manually:
+
+    commands\setup_vitis_app.bat <VITIS_WORKSPACE_PATH>
+
+  Example:
+    commands\setup_vitis_app.bat C:\Users\shini\Final_Zybo_Proj\WORKSPACETEST
+
+  This script automatically:
+    - Copies all source files into zybo_project/src/ (Step 12)
+    - Copies the prebuilt bitstream into _ide/bitstream/ (Step 13)
+    - Patches the GP1 APER_CLK register bug in all ps7_init.tcl files (Step 7b)
+    - Fixes the launch.json dynclk.tcl misreference if present
+
+  After running, just Refresh the project in Vitis, Build, and Run.
+
 ================================================================================
   WHY A FRESH CLONE DOESN'T "JUST BUILD"
 ================================================================================
@@ -573,6 +590,15 @@ workspace (see Steps 8-13 below).
   Q: App boots but buttons do nothing
   A: SDT interrupt ID issue. Verify xpar_remap.h has the
      "+ XSCUGIC_SPI_INT_ID_START" lines for all fabric interrupts.
+
+  Q: "invalid command name ps7_init" when launching hardware
+  A: The launch.json is pointing to the wrong tcl file. Open:
+       <workspace>/zybo_project/_ide/launch.json
+     Find the "ps7InitTclFile" field. If it points to "dynclk.tcl" (or
+     anything other than ps7_init.tcl), change it to:
+       "${workspaceFolder}\\zybo_project\\_ide\\psinit\\ps7_init.tcl"
+     This can happen when Vitis auto-generates the run configuration and
+     picks up the wrong .tcl file from the psinit directory.
 
   Q: Platform build fails with "XSA not found"
   A: Verify system_wrapper.xsa exists at the path you specified.
